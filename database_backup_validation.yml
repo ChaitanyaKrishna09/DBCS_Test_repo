@@ -1,0 +1,12 @@
+---
+# Validate that a recent, successful database backup is available before patching.
+# Example:
+#   ansible-playbook -i inventory database_backup_validation.yml \
+#     -e backup_validation_hosts=dbservers \
+#     -e backup_validation_oracle_sid=ORCL
+- name: Validate latest successful database backup
+  hosts: "{{ backup_validation_hosts | default('dbservers') }}"
+  gather_facts: false
+  become: true
+  roles:
+    - role: backup_validation

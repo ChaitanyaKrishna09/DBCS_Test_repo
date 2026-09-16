@@ -1,0 +1,15 @@
+namespace: centroid 
+name: dbcsdbpatchingcommon
+version: "1.0.0"
+readme: readme.md
+authors:
+  - "Naidu Chaitanya"
+description: >
+  This collection provides reusable automation for Oracle Cloud Infrastructure
+  (OCI) Database Cloud Service (DBCS) environments. It includes common roles,
+  tasks for DBCS database node operations, 
+  and related database infrastructure automation.
+license: Proprietary
+dependencies:
+  oracle.oci: ">=5.5.0"
+  community.general: ">=1.0.0"
