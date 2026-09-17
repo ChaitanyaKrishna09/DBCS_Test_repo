@@ -4,6 +4,8 @@ backup_validation_oracle_sid: "{{ ansible_env.ORACLE_SID | default('DB0609') }}"
 backup_validation_connect_string: "/ as sysdba"
 backup_validation_sqlplus_bin: "{{ backup_validation_oracle_home }}/bin/sqlplus"
 backup_validation_rman_bin: "{{ backup_validation_oracle_home }}/bin/rman"
+backup_validation_sqlplus_connect_string: "/ as sysdba"
+backup_validation_rman_target_string: "/"
 
 # Keep this overridable for environments with an agreed RMAN command set.
 backup_validation_rman_command: |-
