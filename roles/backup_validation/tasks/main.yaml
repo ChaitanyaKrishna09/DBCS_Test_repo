@@ -59,6 +59,7 @@
         AND bp.STATUS = 'A'
         AND bp.DELETED = 'NO'
         AND bp.HANDLE NOT LIKE '%spfile_backup%'
+        AND bs.COMPLETION_TIME >= SYSTIMESTAMP - NUMTODSINTERVAL(24, 'HOUR')
       ORDER BY bs.COMPLETION_TIME DESC;
       exit;
   environment:
