@@ -1,0 +1,99 @@
+---
+- name: Require an Oracle SID for backup validation
+  ansible.builtin.assert:
+    that:
+      - backup_validation_oracle_sid | length > 0
+    fail_msg: >-
+      Set backup_validation_oracle_sid before running backup validation.
+
+- name: Check SQL*Plus is available
+  ansible.builtin.stat:
+    path: "{{ backup_validation_sqlplus_bin }}"
+  register: backup_validation_sqlplus
+
+- name: Check RMAN is available
+  ansible.builtin.stat:
+    path: "{{ backup_validation_rman_bin }}"
+  register: backup_validation_rman
+
+- name: Stop when Oracle backup tools are unavailable
+  ansible.builtin.assert:
+    that:
+      - backup_validation_sqlplus.stat.exists
+      - backup_validation_rman.stat.exists
+    fail_msg: >-
+      SQL*Plus and RMAN are required. Expected {{ backup_validation_sqlplus_bin }}
+      and {{ backup_validation_rman_bin }}.
+
+- name: Query the latest available database backup with SQL*Plus
+  ansible.builtin.command:
+    cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_connect_string }}\""
+    stdin: |-
+      whenever sqlerror exit failure rollback;
+      set heading off feedback off pagesize 0 verify off echo off trimspool on;
+      SELECT
+          TO_CHAR(bs.COMPLETION_TIME, 'DD-MON-YYYY HH24:MI:SS')
+          || '|'
+          || bs.BACKUP_TYPE
+          || '|'
+          || NVL(TO_CHAR(bs.INCREMENTAL_LEVEL), 'N/A')
+          || '|'
+          || CASE
+                 WHEN bp.STATUS = 'A' THEN 'AVAILABLE'
+                 ELSE bp.STATUS
+             END
+          || '|'
+          || bp.DELETED
+          || '|'
+          || ROUND((SYSDATE - bs.COMPLETION_TIME) * 24, 2)
+          || '|'
+          || bp.BYTES
+          || '|'
+          || bp.HANDLE
+      FROM V$BACKUP_SET bs
+      JOIN V$BACKUP_PIECE bp
+        ON bs.SET_STAMP = bp.SET_STAMP
+      AND bs.SET_COUNT = bp.SET_COUNT
+      WHERE bs.BACKUP_TYPE = 'D'
+        AND bp.STATUS = 'A'
+        AND bp.DELETED = 'NO'
+        AND bp.HANDLE NOT LIKE '%spfile_backup%'
+      ORDER BY bs.COMPLETION_TIME DESC;
+      exit;
+  environment:
+    ORACLE_HOME: "{{ backup_validation_oracle_home }}"
+    ORACLE_SID: "{{ backup_validation_oracle_sid }}"
+    PATH: "{{ backup_validation_oracle_home }}/bin:{{ ansible_env.PATH | default('/usr/bin:/bin') }}"
+  register: backup_validation_sql_result
+  changed_when: false
+  failed_when: backup_validation_sql_result.rc != 0
+
+- name: Stop when no available database backup is found
+  ansible.builtin.assert:
+    that:
+      - backup_validation_sql_result.stdout | trim | length > 0
+      - backup_validation_sql_result.stdout is search('\\|AVAILABLE\\|NO\\|')
+    fail_msg: >-
+      No available, non-deleted database backup was found. Database patching is
+      stopped.
+
+- name: Run the agreed RMAN availability check
+  ansible.builtin.command:
+    cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_connect_string }}\""
+    stdin: "{{ backup_validation_rman_command }}"
+  environment:
+    ORACLE_HOME: "{{ backup_validation_oracle_home }}"
+    ORACLE_SID: "{{ backup_validation_oracle_sid }}"
+    PATH: "{{ backup_validation_oracle_home }}/bin:{{ ansible_env.PATH | default('/usr/bin:/bin') }}"
+  register: backup_validation_rman_result
+  changed_when: false
+  failed_when: >-
+    backup_validation_rman_result.rc != 0 or
+    backup_validation_rman_result.stdout is search('RMAN-[0-9]+')
+
+- name: Report validated backup status
+  ansible.builtin.debug:
+    msg: >-
+      Backup validation passed for {{ backup_validation_oracle_sid }}.
+      The latest approved backup query returned an available, non-deleted
+      database backup and RMAN completed successfully.
