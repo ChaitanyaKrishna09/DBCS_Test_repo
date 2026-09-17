@@ -27,7 +27,8 @@
 
 - name: Query the latest available database backup with SQL*Plus
   ansible.builtin.command:
-    cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_connect_string }}\""
+    #cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_connect_string }}\""
+    cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_sqlplus_connect_string }}\""
     stdin: |-
       whenever sqlerror exit failure rollback;
       set heading off feedback off pagesize 0 verify off echo off trimspool on;
@@ -79,7 +80,8 @@
 
 - name: Run the agreed RMAN availability check
   ansible.builtin.command:
-    cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_connect_string }}\""
+    #cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_connect_string }}\""
+    cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_rman_target_string }}\""
     stdin: "{{ backup_validation_rman_command }}"
   environment:
     ORACLE_HOME: "{{ backup_validation_oracle_home }}"
