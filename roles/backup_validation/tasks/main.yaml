@@ -69,6 +69,26 @@
   changed_when: false
   failed_when: backup_validation_sql_result.rc != 0
   
+- name: Filter backup rows to the last 24 hours in the shell
+  ansible.builtin.shell: |
+    export LC_ALL=C
+    now_epoch=$(date +%s)
+    threshold_epoch=$((now_epoch - 86400))
+
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      ts=$(printf '%s\n' "$line" | cut -d'|' -f1)
+      ts_epoch=$(date -d "$ts" +%s 2>/dev/null || true)
+      [ -n "$ts_epoch" ] || continue
+      if [ "$ts_epoch" -ge "$threshold_epoch" ]; then
+        printf '%s\n' "$line"
+      fi
+    done <<'EOF'
+    {{ backup_validation_sql_result.stdout }}
+    EOF
+  register: backup_validation_recent_result
+  changed_when: false
+  
 - name: Display the latest available backup SQL output
   ansible.builtin.debug:
     msg: "{{ backup_validation_sql_result.stdout | trim }}"
@@ -79,8 +99,8 @@
       - backup_validation_sql_result.stdout | trim | length > 0
       - backup_validation_sql_result.stdout is search('\\|AVAILABLE\\|NO\\|')
     fail_msg: >-
-      No available, non-deleted database backup was found. Database patching is
-      stopped.
+      No available, non-deleted database backup was found within the last 24
+      hours. Database patching is stopped.
 
 - name: Run the agreed RMAN availability check
   ansible.builtin.command:
