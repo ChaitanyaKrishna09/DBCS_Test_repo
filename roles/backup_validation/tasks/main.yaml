@@ -68,7 +68,11 @@
   register: backup_validation_sql_result
   changed_when: false
   failed_when: backup_validation_sql_result.rc != 0
-
+  
+- name: Display the latest available backup SQL output
+  ansible.builtin.debug:
+    msg: "{{ backup_validation_sql_result.stdout | trim }}"
+    
 - name: Stop when no available database backup is found
   ansible.builtin.assert:
     that:
