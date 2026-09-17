@@ -89,6 +89,17 @@
     EOF
   register: backup_validation_recent_result
   changed_when: false
+
+- name: Validate that a recent valid database backup exists
+  ansible.builtin.assert:
+    that:
+      - backup_validation_sql_result.stdout | trim | length > 0
+      - backup_validation_sql_result.stdout is search('\\|AVAILABLE\\|NO\\|')
+    fail_msg: >-
+      Backup validation failed: no available, non-deleted database backup was
+      found in the last 24 hours for SID {{ backup_validation_oracle_sid }}.
+      This means the required backup threshold is not met. Database patching is
+      stopped.
   
 - name: Display the latest available backup SQL output
   ansible.builtin.debug:
