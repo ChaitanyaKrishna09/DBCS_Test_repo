@@ -5,7 +5,7 @@
 #     -e backup_validation_hosts=dbservers \
 #     -e backup_validation_oracle_sid=ORCL
 - name: Validate latest successful database backup
-  hosts: "{{ backup_validation_hosts | default('dbservers') }}"
+  hosts: "{{ backup_validation_hosts | default('DBCS') }}"
   gather_facts: false
   become: true
   roles:
