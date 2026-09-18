@@ -8,5 +8,7 @@
   hosts: "{{ backup_validation_hosts | default('DBCS') }}"
   gather_facts: false
   become: true
+  vars_files:
+    - config/DB0609.yaml
   roles:
     - role: backup_validation
