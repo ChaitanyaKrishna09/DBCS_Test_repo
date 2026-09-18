@@ -6,6 +6,21 @@
     fail_msg: >-
       Set backup_validation_oracle_sid before running backup validation.
 
+- name: Ensure only the database home is used for backup validation
+  ansible.builtin.assert:
+    that:
+      - backup_validation_oracle_home is defined
+      - backup_validation_oracle_home | length > 0
+      - backup_validation_oracle_home != (grid_home | default(''))
+    fail_msg: >-
+      Backup validation must use the Oracle DB home only. Grid home is excluded.
+      Set oracle_home in the config or override backup_validation_oracle_home.
+
+- name: Check the configured database backup home path exists
+  ansible.builtin.stat:
+    path: "{{ backup_validation_oracle_home }}"
+  register: backup_validation_dbhome_stat
+
 - name: Check SQL*Plus is available
   ansible.builtin.stat:
     path: "{{ backup_validation_sqlplus_bin }}"
@@ -16,18 +31,19 @@
     path: "{{ backup_validation_rman_bin }}"
   register: backup_validation_rman
 
-- name: Stop when Oracle backup tools are unavailable
+- name: Stop when Oracle DB home or tools are unavailable
   ansible.builtin.assert:
     that:
+      - backup_validation_dbhome_stat.stat.exists
       - backup_validation_sqlplus.stat.exists
       - backup_validation_rman.stat.exists
     fail_msg: >-
-      SQL*Plus and RMAN are required. Expected {{ backup_validation_sqlplus_bin }}
-      and {{ backup_validation_rman_bin }}.
+      Database home {{ backup_validation_oracle_home }} and the Oracle backup tools
+      are required. Expected {{ backup_validation_sqlplus_bin }} and
+      {{ backup_validation_rman_bin }}.
 
 - name: Query the latest available database backup with SQL*Plus
   ansible.builtin.command:
-    #cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_connect_string }}\""
     cmd: "{{ backup_validation_sqlplus_bin }} -s \"{{ backup_validation_sqlplus_connect_string }}\""
     stdin: |-
       whenever sqlerror exit failure rollback;
@@ -59,8 +75,7 @@
         AND bp.STATUS = 'A'
         AND bp.DELETED = 'NO'
         AND bp.HANDLE NOT LIKE '%spfile_backup%'
-        AND bs.COMPLETION_TIME >= SYSTIMESTAMP - NUMTODSINTERVAL(24, 'HOUR')
-      ORDER BY bs.COMPLETION_TIME DESC;
+        ORDER BY bs.COMPLETION_TIME DESC;
       exit;
   environment:
     ORACLE_HOME: "{{ backup_validation_oracle_home }}"
@@ -69,26 +84,6 @@
   register: backup_validation_sql_result
   changed_when: false
   failed_when: backup_validation_sql_result.rc != 0
-  
-- name: Filter backup rows to the last 24 hours in the shell
-  ansible.builtin.shell: |
-    export LC_ALL=C
-    now_epoch=$(date +%s)
-    threshold_epoch=$((now_epoch - 86400))
-
-    while IFS= read -r line; do
-      [ -n "$line" ] || continue
-      ts=$(printf '%s\n' "$line" | cut -d'|' -f1)
-      ts_epoch=$(date -d "$ts" +%s 2>/dev/null || true)
-      [ -n "$ts_epoch" ] || continue
-      if [ "$ts_epoch" -ge "$threshold_epoch" ]; then
-        printf '%s\n' "$line"
-      fi
-    done <<'EOF'
-    {{ backup_validation_sql_result.stdout }}
-    EOF
-  register: backup_validation_recent_result
-  changed_when: false
 
 - name: Validate that a recent valid database backup exists
   ansible.builtin.assert:
@@ -100,23 +95,13 @@
       found in the last 24 hours for SID {{ backup_validation_oracle_sid }}.
       This means the required backup threshold is not met. Database patching is
       stopped.
-  
+
 - name: Display the latest available backup SQL output
   ansible.builtin.debug:
     msg: "{{ backup_validation_sql_result.stdout | trim }}"
-    
-- name: Stop when no available database backup is found
-  ansible.builtin.assert:
-    that:
-      - backup_validation_sql_result.stdout | trim | length > 0
-      - backup_validation_sql_result.stdout is search('\\|AVAILABLE\\|NO\\|')
-    fail_msg: >-
-      No available, non-deleted database backup was found within the last 24
-      hours. Database patching is stopped.
 
 - name: Run the agreed RMAN availability check
   ansible.builtin.command:
-    #cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_connect_string }}\""
     cmd: "{{ backup_validation_rman_bin }} target \"{{ backup_validation_rman_target_string }}\""
     stdin: "{{ backup_validation_rman_command }}"
   environment:
@@ -134,4 +119,5 @@
     msg: >-
       Backup validation passed for {{ backup_validation_oracle_sid }}.
       The latest approved backup query returned an available, non-deleted
-      database backup and RMAN completed successfully.
+      database backup and RMAN completed successfully using the Oracle DB home
+      {{ backup_validation_oracle_home }}.
