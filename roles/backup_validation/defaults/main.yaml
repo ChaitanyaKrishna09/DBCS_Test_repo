@@ -1,7 +1,9 @@
 ---
-backup_validation_oracle_home: "{{ ansible_env.ORACLE_HOME | default('/u01/app/oracle/product/19.0.0/dbhome_1') }}"
-backup_validation_oracle_sid: "{{ ansible_env.ORACLE_SID | default('DB0609') }}"
+backup_validation_oracle_home: "{{ oracle_home | default(ansible_env.ORACLE_HOME | default('/u01/app/oracle/product/19.0.0/dbhome_1')) }}"
+backup_validation_oracle_sid: "{{ ansible_env.ORACLE_SID | default(db_name | default('DB0609')) }}"
 backup_validation_connect_string: "/ as sysdba"
+backup_validation_backup_dir: "{{ backup_dir | default('/u01/backups') }}"
+backup_validation_backup_homes: "{{ backup_homes | default(['oracle_home']) }}"
 backup_validation_sqlplus_bin: "{{ backup_validation_oracle_home }}/bin/sqlplus"
 backup_validation_rman_bin: "{{ backup_validation_oracle_home }}/bin/rman"
 backup_validation_sqlplus_connect_string: "/ as sysdba"
