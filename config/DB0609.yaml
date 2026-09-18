@@ -1,0 +1,24 @@
+---
+current_date: "{{ '%Y-%m-%d' | strftime }}"
+current_ts: "{{ '%Y-%m-%d_%H-%M-%S' | strftime }}"
+currentDate: "{{ lookup('pipe','date +%Y%m%d') }}"
+date_compact: "{{ '%Y%m%d' | strftime }}"
+
+db_name: DB0609
+ENV_HOME: "/home/oracle"
+ENV_FILE: "DB.env"
+log_dir: "/tmp/dbcs_logs"
+tmp_sql_dir: "/tmp"
+
+backup_threshold_hours: 24
+
+GRID_ENV_HOME: "/home/grid"
+GRID_ENV_FILE: "GRID.env"
+
+backup_dir: "/u01/backups"  #Homes backup dir
+
+oracle_home: "/u01/app/oracle/product/23.0.0.0/dbhome_1"
+grid_home: "/u01/app/23.0.0.0/grid"
+
+backup_homes:
+  - oracle_home
