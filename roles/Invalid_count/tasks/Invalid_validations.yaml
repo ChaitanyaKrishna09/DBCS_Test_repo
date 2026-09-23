@@ -1,0 +1,24 @@
+---
+- name: Execute invalid object checks SQL file
+  ansible.builtin.shell: |
+    "{{ oracle_home }}/bin/sqlplus" -s "/ as sysdba" <<'SQL'
+    @{{ playbook_dir }}/roles/Invalid_count/defaults/Invalid_checks.sql
+    set heading off feedback off pagesize 0 verify off echo off trimspool on
+    select 'INVALID_SYS_COUNT=' || count(*) from cdb_objects where status = 'INVALID' and owner = 'SYS';
+    select 'INVALID_SYSTEM_COUNT=' || count(*) from cdb_objects where status = 'INVALID' and owner = 'SYSTEM';
+    exit;
+    SQL
+  args:
+    executable: /bin/bash
+  environment:
+    ORACLE_HOME: "{{ oracle_home }}"
+    ORACLE_SID: "{{ ansible_env.ORACLE_SID | default(db_name) }}"
+    PATH: "{{ oracle_home }}/bin:{{ ansible_env.PATH | default('/usr/bin:/bin') }}"
+  register: invalid_validation_sql_result
+  changed_when: false
+  failed_when: invalid_validation_sql_result.rc != 0
+
+- name: Store invalid SYS and SYSTEM counts in variables
+  ansible.builtin.set_fact:
+    invalid_sys_count: "{{ invalid_validation_sql_result.stdout | regex_search('INVALID_SYS_COUNT=([0-9]+)', '\\1') | int }}"
+    invalid_system_count: "{{ invalid_validation_sql_result.stdout | regex_search('INVALID_SYSTEM_COUNT=([0-9]+)', '\\1') | int }}"

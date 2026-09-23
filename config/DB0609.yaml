@@ -22,3 +22,6 @@ grid_home: "/u01/app/23.0.0.0/grid"
 
 backup_homes:
   - oracle_home
+  
+Compile invalid database objects:
+  - oracle_home

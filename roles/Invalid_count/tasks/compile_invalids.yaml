@@ -1,0 +1,10 @@
+---
+- name: Compile invalid database objects
+  ansible.builtin.command:
+    cmd: "{{ oracle_home }}/perl/bin/perl catcon.pl --n 1 --e --b utlrp --d '.' utlrp.sql"
+    chdir: "{{ oracle_home }}/rdbms/admin"
+  environment:
+    ORACLE_HOME: "{{ oracle_home }}"
+  register: compile_invalids_result
+  changed_when: false
+  failed_when: compile_invalids_result.rc != 0

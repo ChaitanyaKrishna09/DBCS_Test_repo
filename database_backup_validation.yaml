@@ -10,5 +10,12 @@
   become: true
   vars_files:
     - config/DB0609.yaml
+  pre_tasks:
+    - name: Load invalid object validation defaults
+      ansible.builtin.include_vars: roles/Invalid_count/defaults/Invalid_validations.yaml
+    - name: Run invalid object validation
+      ansible.builtin.include_tasks: roles/Invalid_count/tasks/Invalid_validations.yaml
+    - name: Compile invalid database objects
+      ansible.builtin.include_tasks: roles/Invalid_count/tasks/compile_invalids.yaml
   roles:
     - role: backup_validation

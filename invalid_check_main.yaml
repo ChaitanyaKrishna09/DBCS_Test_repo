@@ -1,0 +1,28 @@
+---
+- name: Invalid object validation and compilation
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_user: "{{ db_user }}"
+
+  vars_files:
+    - "config/{{ instance }}.yaml"
+
+  tasks:
+    - name: Assert required invalid object check variables are injected
+      ansible.builtin.assert:
+        that:
+          - db_user is defined
+          - ENV_HOME is defined
+          - ENV_FILE is defined
+          - oracle_home is defined
+          - db_name is defined
+        fail_msg: "Required invalid object check variables (db_user, ENV_HOME, ENV_FILE, oracle_home, db_name) are missing."
+
+    - name: Execute invalid object validation
+      ansible.builtin.include_tasks: roles/Invalid_count/tasks/Invalid_validations.yaml
+
+    - name: Compile invalid database objects when invalid counts exist
+      ansible.builtin.include_tasks: roles/Invalid_count/tasks/compile_invalids.yaml
+      when:
+        - (invalid_sys_count | int) > 0 or (invalid_system_count | int) > 0
