@@ -1,0 +1,73 @@
+---
+- name: Create patch discovery report directory
+  ansible.builtin.file:
+    path: "{{ patch_discovery_report_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Set patch discovery report metadata
+  ansible.builtin.set_fact:
+    patch_discovery_timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+    patch_discovery_file_timestamp: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+- name: Set patch discovery report paths
+  ansible.builtin.set_fact:
+    patch_discovery_json_report: >-
+      {{ patch_discovery_report_dir }}/{{ patch_discovery_report_prefix }}_{{
+      patch_discovery_file_timestamp }}.json
+    patch_discovery_html_report: >-
+      {{ patch_discovery_report_dir }}/{{ patch_discovery_report_prefix }}_{{
+      patch_discovery_file_timestamp }}.html
+
+- name: Write machine-readable patch discovery report
+  ansible.builtin.copy:
+    dest: "{{ patch_discovery_json_report }}"
+    mode: "0640"
+    content: >-
+      {{
+        {
+          'discovery_timestamp': patch_discovery_timestamp,
+          'target_group': patch_discovery_target_group,
+          'db_system_count': patch_discovery_db_system_targets | length,
+          'db_home_count': patch_discovery_catalog | length,
+          'patch_candidate_count': (
+            patch_discovery_catalog
+            | map(attribute='available_patches')
+            | map('length')
+            | sum
+          ),
+          'db_homes': patch_discovery_catalog
+        }
+        | to_nice_json
+      }}
+
+- name: Write DBA patch discovery report
+  ansible.builtin.template:
+    src: patch_discovery_report.html.j2
+    dest: "{{ patch_discovery_html_report }}"
+    mode: "0640"
+
+- name: Publish patch discovery workflow statistics
+  ansible.builtin.set_stats:
+    data:
+      patch_discovery_status: "SUCCEEDED"
+      patch_discovery_timestamp: "{{ patch_discovery_timestamp }}"
+      patch_discovery_db_system_count: >-
+        {{ patch_discovery_db_system_targets | length }}
+      patch_discovery_db_home_count: "{{ patch_discovery_catalog | length }}"
+      patch_discovery_patch_candidate_count: >-
+        {{
+          patch_discovery_catalog
+          | map(attribute='available_patches')
+          | map('length')
+          | sum
+        }}
+      patch_discovery_json_report: "{{ patch_discovery_json_report }}"
+      patch_discovery_html_report: "{{ patch_discovery_html_report }}"
+    per_host: false
+
+- name: Display patch discovery report locations
+  ansible.builtin.debug:
+    msg:
+      - "JSON report: {{ patch_discovery_json_report }}"
+      - "HTML report: {{ patch_discovery_html_report }}"

@@ -1,0 +1,29 @@
+---
+- name: Initialize DB System target catalog
+  ansible.builtin.set_fact:
+    patch_discovery_db_system_targets: []
+    patch_discovery_seen_db_systems: []
+
+- name: Add unique DB Systems to target catalog
+  ansible.builtin.set_fact:
+    patch_discovery_db_system_targets: >-
+      {{
+        patch_discovery_db_system_targets
+        + [
+            {
+              'inventory_host': item,
+              'compartment_id': hostvars[item].compartment_id,
+              'db_system_id': hostvars[item].db_system_id,
+              'region': (
+                hostvars[item].region
+                | default(patch_discovery_region, true)
+              )
+            }
+          ]
+      }}
+    patch_discovery_seen_db_systems: >-
+      {{ patch_discovery_seen_db_systems + [hostvars[item].db_system_id] }}
+  when: hostvars[item].db_system_id not in patch_discovery_seen_db_systems
+  loop: "{{ patch_discovery_inventory_hosts }}"
+  loop_control:
+    label: "{{ hostvars[item].db_system_id }}"

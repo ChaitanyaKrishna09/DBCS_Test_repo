@@ -1,0 +1,18 @@
+---
+- name: Record DB Systems without DB Homes
+  ansible.builtin.debug:
+    msg: >-
+      No DB Homes were returned for DB System
+      {{ patch_discovery_db_system_result.item.db_system_id }}.
+  when: patch_discovery_db_system_result.db_homes | default([]) | length == 0
+
+- name: Discover databases, patches, and history for DB Home
+  ansible.builtin.include_tasks: discover_db_home.yml
+  loop: "{{ patch_discovery_db_system_result.db_homes | default([]) }}"
+  loop_control:
+    loop_var: patch_discovery_db_home
+    label: >-
+      {{
+        patch_discovery_db_home.display_name
+        | default(patch_discovery_db_home.id)
+      }}

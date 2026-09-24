@@ -1,0 +1,6 @@
+---
+patch_discovery_target_group: ""
+patch_discovery_region: ""
+patch_discovery_report_dir: "{{ playbook_dir }}/reports"
+patch_discovery_report_prefix: "dbcs_patch_discovery"
+patch_discovery_include_history: true

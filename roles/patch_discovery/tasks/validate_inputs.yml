@@ -1,0 +1,34 @@
+---
+- name: Validate target inventory group
+  ansible.builtin.assert:
+    that:
+      - patch_discovery_target_group | length > 0
+      - patch_discovery_target_group in groups
+      - groups[patch_discovery_target_group] | length > 0
+    fail_msg: >-
+      patch_discovery_target_group must identify a non-empty inventory group.
+
+- name: Set patch discovery inventory hosts
+  ansible.builtin.set_fact:
+    patch_discovery_inventory_hosts: >-
+      {{ groups[patch_discovery_target_group] }}
+
+- name: Validate OCI inventory attributes
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].compartment_id is defined
+      - hostvars[item].compartment_id | length > 0
+      - hostvars[item].db_system_id is defined
+      - hostvars[item].db_system_id | length > 0
+      - >-
+        (
+          hostvars[item].region is defined
+          and hostvars[item].region | length > 0
+        )
+        or patch_discovery_region | length > 0
+    fail_msg: >-
+      Inventory host {{ item }} must provide compartment_id, db_system_id, and
+      either region or a non-empty patch_discovery_region.
+  loop: "{{ patch_discovery_inventory_hosts }}"
+  loop_control:
+    label: "{{ item }}"

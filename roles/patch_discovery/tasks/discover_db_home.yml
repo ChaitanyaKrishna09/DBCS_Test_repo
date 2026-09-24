@@ -1,0 +1,58 @@
+---
+- name: Fetch databases for DB Home
+  oracle.oci.oci_database_database_facts:
+    compartment_id: >-
+      {{
+        patch_discovery_db_home.compartment_id
+        | default(patch_discovery_db_system_result.item.compartment_id)
+      }}
+    db_home_id: "{{ patch_discovery_db_home.id }}"
+    region: "{{ patch_discovery_db_system_result.item.region }}"
+  register: patch_discovery_databases
+
+- name: Fetch applicable patches for DB Home
+  oracle.oci.oci_database_db_home_patch_facts:
+    db_home_id: "{{ patch_discovery_db_home.id }}"
+    region: "{{ patch_discovery_db_system_result.item.region }}"
+  register: patch_discovery_available_patches
+
+- name: Fetch patch history for DB Home
+  oracle.oci.oci_database_db_home_patch_history_entry_facts:
+    db_home_id: "{{ patch_discovery_db_home.id }}"
+    region: "{{ patch_discovery_db_system_result.item.region }}"
+  register: patch_discovery_patch_history
+  when: patch_discovery_include_history | bool
+
+- name: Add DB Home results to discovery catalog
+  ansible.builtin.set_fact:
+    patch_discovery_catalog: >-
+      {{
+        patch_discovery_catalog
+        + [
+            {
+              'inventory_host': (
+                patch_discovery_db_system_result.item.inventory_host
+              ),
+              'compartment_id': (
+                patch_discovery_db_system_result.item.compartment_id
+              ),
+              'db_system_id': (
+                patch_discovery_db_system_result.item.db_system_id
+              ),
+              'region': patch_discovery_db_system_result.item.region,
+              'db_home': patch_discovery_db_home,
+              'databases': (
+                patch_discovery_databases.databases
+                | default([])
+              ),
+              'available_patches': (
+                patch_discovery_available_patches.db_home_patches
+                | default([])
+              ),
+              'patch_history': (
+                patch_discovery_patch_history.db_home_patch_history_entries
+                | default([])
+              )
+            }
+          ]
+      }}

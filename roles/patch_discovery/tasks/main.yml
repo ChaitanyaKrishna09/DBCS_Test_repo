@@ -1,0 +1,30 @@
+---
+- name: Validate patch discovery inputs
+  ansible.builtin.include_tasks: validate_inputs.yml
+
+- name: Build unique DB System target catalog
+  ansible.builtin.include_tasks: build_targets.yml
+
+- name: Fetch DB Homes for target DB Systems
+  oracle.oci.oci_database_db_home_facts:
+    compartment_id: "{{ item.compartment_id }}"
+    db_system_id: "{{ item.db_system_id }}"
+    region: "{{ item.region }}"
+  loop: "{{ patch_discovery_db_system_targets }}"
+  loop_control:
+    label: "{{ item.db_system_id }}"
+  register: patch_discovery_db_home_results
+
+- name: Initialize patch discovery catalog
+  ansible.builtin.set_fact:
+    patch_discovery_catalog: []
+
+- name: Discover patches for every DB Home
+  ansible.builtin.include_tasks: discover_db_system.yml
+  loop: "{{ patch_discovery_db_home_results.results }}"
+  loop_control:
+    loop_var: patch_discovery_db_system_result
+    label: "{{ patch_discovery_db_system_result.item.db_system_id }}"
+
+- name: Generate patch discovery reports
+  ansible.builtin.include_tasks: generate_reports.yml

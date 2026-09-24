@@ -1,0 +1,14 @@
+---
+- name: Discover OCI DBCS patches for DBA review
+  hosts: localhost
+  gather_facts: false
+
+  collections:
+    - oracle.oci
+
+  vars:
+    patch_discovery_target_group: "{{ group1 }}"
+    patch_discovery_region: "{{ region1 | default('') }}"
+
+  roles:
+    - role: patch_discovery

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBCS Patch Discovery Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #222; }
+    h1, h2 { color: #312d2a; }
+    .summary { margin-bottom: 24px; padding: 12px; background: #f4f4f4; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #e8e8e8; }
+    .empty { color: #666; font-style: italic; }
+    .review { color: #9b5c00; font-weight: bold; }
+    .current { color: #247a2c; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>OCI DBCS Patch Discovery Report</h1>
+  <div class="summary">
+    <div><strong>Discovery time:</strong> {{ patch_discovery_timestamp }}</div>
+    <div><strong>Inventory group:</strong> {{ patch_discovery_target_group }}</div>
+    <div><strong>DB Systems:</strong> {{ patch_discovery_db_system_targets | length }}</div>
+    <div><strong>DB Homes:</strong> {{ patch_discovery_catalog | length }}</div>
+    <div>
+      <strong>Patch candidates:</strong>
+      {{
+        patch_discovery_catalog
+        | map(attribute='available_patches')
+        | map('length')
+        | sum
+      }}
+    </div>
+  </div>
+
+  {% for entry in patch_discovery_catalog %}
+  <h2>{{ entry.db_home.display_name | default(entry.db_home.id) }}</h2>
+  <table>
+    <tr><th>Region</th><td>{{ entry.region }}</td></tr>
+    <tr><th>DB System OCID</th><td>{{ entry.db_system_id }}</td></tr>
+    <tr><th>DB Home OCID</th><td>{{ entry.db_home.id }}</td></tr>
+    <tr><th>Current version</th><td>{{ entry.db_home.db_version | default('N/A') }}</td></tr>
+    <tr><th>Lifecycle state</th><td>{{ entry.db_home.lifecycle_state | default('N/A') }}</td></tr>
+    <tr>
+      <th>Databases</th>
+      <td>
+        {% if entry.databases | length > 0 %}
+          {% for database in entry.databases %}
+            {{ database.db_name | default(database.id) }}
+            ({{ database.lifecycle_state | default('UNKNOWN') }}){% if not loop.last %}<br>{% endif %}
+          {% endfor %}
+        {% else %}
+          <span class="empty">No databases returned</span>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <h3>Available patches</h3>
+  {% if entry.available_patches | length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Version</th>
+        <th>Patch OCID</th>
+        <th>Description</th>
+        <th>Available actions</th>
+        <th>Review classification</th>
+        <th>Latest PRECHECK</th>
+        <th>Latest APPLY</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for patch in entry.available_patches %}
+      {% set patch_history = entry.patch_history
+          | selectattr('patch_id', 'equalto', patch.id)
+          | list %}
+      {% set precheck_history = patch_history
+          | selectattr('action', 'equalto', 'PRECHECK')
+          | sort(attribute='time_started')
+          | list %}
+      {% set apply_history = patch_history
+          | selectattr('action', 'equalto', 'APPLY')
+          | sort(attribute='time_started')
+          | list %}
+      <tr>
+        <td>{{ patch.version | default('N/A') }}</td>
+        <td>{{ patch.id }}</td>
+        <td>{{ patch.description | default('N/A') }}</td>
+        <td>{{ patch.available_actions | default([]) | join(', ') }}</td>
+        <td>
+          {% if patch.version | default('') == entry.db_home.db_version | default('') %}
+            <span class="current">CURRENT_VERSION</span>
+          {% else %}
+            <span class="review">REVIEW_REQUIRED</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if precheck_history | length > 0 %}
+            {{ (precheck_history | last).lifecycle_state | default('UNKNOWN') }}
+          {% else %}
+            NOT_RUN
+          {% endif %}
+        </td>
+        <td>
+          {% if apply_history | length > 0 %}
+            {{ (apply_history | last).lifecycle_state | default('UNKNOWN') }}
+          {% else %}
+            NOT_RUN
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">OCI returned no applicable patches for this DB Home.</p>
+  {% endif %}
+
+  <h3>Patch history</h3>
+  {% if entry.patch_history | length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Patch OCID</th>
+        <th>Action</th>
+        <th>State</th>
+        <th>Started</th>
+        <th>Ended</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for history in entry.patch_history | sort(attribute='time_started', reverse=true) %}
+      <tr>
+        <td>{{ history.patch_id | default('N/A') }}</td>
+        <td>{{ history.action | default('N/A') }}</td>
+        <td>{{ history.lifecycle_state | default('N/A') }}</td>
+        <td>{{ history.time_started | default('N/A') }}</td>
+        <td>{{ history.time_ended | default('N/A') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No patch history returned.</p>
+  {% endif %}
+  {% endfor %}
+
+  {% if patch_discovery_catalog | length == 0 %}
+    <p class="empty">No DB Homes were discovered for the selected DB Systems.</p>
+  {% endif %}
+</body>
+</html>
