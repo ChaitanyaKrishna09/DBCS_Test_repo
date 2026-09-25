@@ -1,0 +1,43 @@
+---
+- name: Query DBA_REGISTRY_SQLPATCH for the applied patch
+  ansible.builtin.shell: |
+    "{{ patch_validation_sqlplus_bin }}" -s \
+      "{{ patch_validation_connect_string }}" <<'SQL'
+    set heading off feedback off pagesize 0 verify off echo off trimspool on
+    select 'SQL_PATCH_STATUS=' || status
+    from dba_registry_sqlpatch
+    where patch_id = (
+      select max(patch_id)
+      from dba_registry_sqlpatch
+      where description like '%{{ patch_validation_expected_patch_version }}%'
+    );
+    exit;
+    SQL
+  args:
+    executable: /bin/bash
+  environment:
+    ORACLE_HOME: "{{ patch_validation_oracle_home }}"
+    ORACLE_SID: "{{ patch_validation_oracle_sid }}"
+    PATH: >-
+      {{ patch_validation_oracle_home }}/bin:{{ ansible_env.PATH
+      | default('/usr/bin:/bin') }}
+  register: patch_validation_sql_patch_result
+  changed_when: false
+  failed_when: patch_validation_sql_patch_result.rc != 0
+
+- name: Determine SQL patch registry verification status
+  ansible.builtin.set_fact:
+    patch_validation_sql_patch_status: >-
+      {{
+        'PASSED'
+        if 'SQL_PATCH_STATUS=SUCCESS'
+        in patch_validation_sql_patch_result.stdout
+        else 'FAILED'
+      }}
+
+- name: Display SQL patch registry verification outcome
+  ansible.builtin.debug:
+    msg: >-
+      DBA_REGISTRY_SQLPATCH check for expected patch version
+      {{ patch_validation_expected_patch_version }}:
+      {{ patch_validation_sql_patch_status }}

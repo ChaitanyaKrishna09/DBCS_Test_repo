@@ -1,0 +1,25 @@
+---
+- name: Assert a valid patch apply stage was requested
+  ansible.builtin.assert:
+    that:
+      - patch_apply_stage in ['precheck', 'apply', 'report']
+    fail_msg: >-
+      patch_apply_stage must be one of precheck, apply, report.
+
+- name: Ensure patch apply working directory exists
+  ansible.builtin.file:
+    path: "{{ patch_apply_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Run PRECHECK revalidation and submission stage
+  ansible.builtin.include_tasks: precheck.yml
+  when: patch_apply_stage == 'precheck'
+
+- name: Run APPLY submission and monitoring stage
+  ansible.builtin.include_tasks: apply.yml
+  when: patch_apply_stage == 'apply'
+
+- name: Run final report generation stage
+  ansible.builtin.include_tasks: report.yml
+  when: patch_apply_stage == 'report'

@@ -1,0 +1,107 @@
+---
+- name: Revalidate approval and run OCI PRECHECK
+  hosts: localhost
+  gather_facts: false
+
+  collections:
+    - oracle.oci
+
+  vars:
+    patch_apply_db_home_id: "{{ db_home_id }}"
+
+  roles:
+    - role: patch_apply
+      vars:
+        patch_apply_stage: precheck
+
+- name: Pre-Apply database gate checks
+  hosts: "{{ patch_apply_target_group | default('all') }}"
+  become: true
+  become_user: "{{ db_user }}"
+
+  vars_files:
+    - "config/{{ instance }}.yaml"
+
+  vars:
+    patch_apply_dir: "{{ playbook_dir }}/apply"
+
+  pre_tasks:
+    - name: Assert required pre-apply variables are injected
+      ansible.builtin.assert:
+        that:
+          - db_user is defined
+          - ENV_HOME is defined
+          - ENV_FILE is defined
+          - oracle_home is defined
+          - db_name is defined
+        fail_msg: >-
+          Required variables (db_user, ENV_HOME, ENV_FILE, oracle_home,
+          db_name) are missing.
+
+  roles:
+    - role: backup_validation
+
+  tasks:
+    - name: Capture pre-apply invalid object baseline
+      ansible.builtin.include_tasks: >-
+        {{ playbook_dir }}/roles/Invalid_count/tasks/Invalid_validations.yaml
+
+    - name: Write pre-apply invalid object baseline to controller
+      ansible.builtin.copy:
+        dest: >-
+          {{ patch_apply_dir }}/{{ inventory_hostname
+          }}_pre_apply_invalid_baseline.json
+        mode: "0640"
+        content: >-
+          {{
+            {
+              'inventory_host': inventory_hostname,
+              'captured_at': lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ'),
+              'invalid_sys_count': invalid_sys_count | int,
+              'invalid_system_count': invalid_system_count | int
+            }
+            | to_nice_json
+          }}
+      delegate_to: localhost
+
+- name: Submit and monitor OCI patch APPLY
+  hosts: localhost
+  gather_facts: false
+
+  collections:
+    - oracle.oci
+
+  vars:
+    patch_apply_db_home_id: "{{ db_home_id }}"
+
+  roles:
+    - role: patch_apply
+      vars:
+        patch_apply_stage: apply
+
+- name: Post-Apply database validation
+  hosts: "{{ patch_apply_target_group | default('all') }}"
+  become: true
+  become_user: "{{ db_user }}"
+
+  vars_files:
+    - "config/{{ instance }}.yaml"
+
+  vars:
+    patch_apply_dir: "{{ playbook_dir }}/apply"
+    patch_validation_expected_patch_version: "{{ patch_version }}"
+
+  roles:
+    - role: patch_validation
+
+- name: Publish final patch application report
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    patch_apply_db_home_id: "{{ db_home_id }}"
+
+  roles:
+    - role: patch_apply
+      vars:
+        patch_apply_stage: report

@@ -1,0 +1,50 @@
+---
+- name: Poll OCI patch history for the new operation until terminal state
+  oracle.oci.oci_database_db_home_patch_history_entry_facts:
+    db_home_id: "{{ patch_apply_approval.db_home_id }}"
+    region: "{{ patch_apply_approval.region }}"
+  register: patch_apply_history_poll
+  until: >-
+    patch_apply_history_poll.db_home_patch_history_entries
+    | default([])
+    | selectattr('patch_id', 'equalto', patch_apply_approval.approved_patch_id)
+    | selectattr('action', 'equalto', patch_apply_monitor_action)
+    | rejectattr('id', 'in', patch_apply_monitor_before_ids)
+    | map(attribute='lifecycle_state')
+    | select('in', ['SUCCEEDED', 'FAILED'])
+    | list
+    | length > 0
+  retries: "{{ patch_apply_monitor_max_attempts }}"
+  delay: "{{ patch_apply_monitor_interval_seconds }}"
+  failed_when: false
+
+- name: Extract the new operation's history entry
+  ansible.builtin.set_fact:
+    patch_apply_monitor_new_entries: >-
+      {{
+        patch_apply_history_poll.db_home_patch_history_entries
+        | default([])
+        | selectattr(
+            'patch_id', 'equalto', patch_apply_approval.approved_patch_id
+          )
+        | selectattr('action', 'equalto', patch_apply_monitor_action)
+        | rejectattr('id', 'in', patch_apply_monitor_before_ids)
+        | sort(attribute='time_started')
+        | list
+      }}
+
+- name: Fail when no new patch history entry appeared
+  ansible.builtin.assert:
+    that:
+      - patch_apply_monitor_new_entries | length > 0
+    fail_msg: >-
+      No new {{ patch_apply_monitor_action }} history entry was found
+      for patch {{ patch_apply_approval.approved_patch_id }} on DB
+      Home {{ patch_apply_approval.db_home_id }} after
+      {{ patch_apply_monitor_max_attempts }} polling attempts. The
+      operation may still be running in OCI; re-run this stage to
+      resume monitoring instead of resubmitting.
+
+- name: Set final monitor result
+  ansible.builtin.set_fact:
+    patch_apply_monitor_result: "{{ patch_apply_monitor_new_entries[-1] }}"

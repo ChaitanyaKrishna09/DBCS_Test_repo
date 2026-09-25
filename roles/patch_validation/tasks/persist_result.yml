@@ -1,0 +1,47 @@
+---
+- name: Determine overall post-apply validation status for this host
+  ansible.builtin.set_fact:
+    patch_validation_overall_status: >-
+      {{
+        'PASSED'
+        if (
+          patch_validation_opatch_status == 'PASSED'
+          and patch_validation_sql_patch_status == 'PASSED'
+          and patch_validation_invalid_status == 'PASSED'
+        )
+        else 'FAILED'
+      }}
+
+- name: Write consolidated post-apply validation result to controller
+  ansible.builtin.copy:
+    dest: >-
+      {{ patch_validation_result_dir }}/{{ inventory_hostname
+      }}_post_apply_validation.json
+    mode: "0640"
+    content: >-
+      {{
+        {
+          'hostname': inventory_hostname,
+          'checked_at': lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ'),
+          'expected_patch_version': patch_validation_expected_patch_version,
+          'opatch_status': patch_validation_opatch_status,
+          'sql_patch_status': patch_validation_sql_patch_status,
+          'invalid_objects_baseline': patch_validation_baseline_invalid_total,
+          'invalid_objects_final': patch_validation_post_apply_invalid_total,
+          'validation_status': patch_validation_overall_status
+        }
+        | to_nice_json
+      }}
+  delegate_to: localhost
+
+- name: Fail the play when post-apply validation did not pass
+  ansible.builtin.assert:
+    that:
+      - patch_validation_overall_status == 'PASSED'
+    fail_msg: >-
+      Post-apply validation failed on {{ inventory_hostname }}.
+      OPatch: {{ patch_validation_opatch_status }},
+      SQL patch registry: {{ patch_validation_sql_patch_status }},
+      Invalid objects: {{ patch_validation_invalid_status }}.
+      Review the consolidated report and remediate before closing
+      out this patching cycle.

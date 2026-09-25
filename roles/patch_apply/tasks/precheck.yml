@@ -1,0 +1,176 @@
+---
+- name: Load approved patch record
+  ansible.builtin.include_tasks: load_approval.yml
+
+- name: Fail when approval has expired
+  ansible.builtin.assert:
+    that:
+      - >-
+        patch_apply_approval.approval_expiry_timestamp == 'N/A' or
+        patch_apply_approval.approval_expiry_timestamp >
+        now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')
+    fail_msg: >-
+      Approval {{ patch_apply_approval.approval_id }} expired at
+      {{ patch_apply_approval.approval_expiry_timestamp }}. Re-run
+      patch_discovery_main.yaml and patch_approval_main.yaml.
+
+- name: Re-fetch current DB Home details from OCI
+  oracle.oci.oci_database_db_home_facts:
+    db_home_id: "{{ patch_apply_approval.db_home_id }}"
+    region: "{{ patch_apply_approval.region }}"
+  register: patch_apply_db_home_current
+
+- name: Fail when DB Home is no longer reachable
+  ansible.builtin.assert:
+    that:
+      - patch_apply_db_home_current.db_homes | default([]) | length > 0
+    fail_msg: >-
+      DB Home {{ patch_apply_approval.db_home_id }} could not be
+      retrieved from OCI region {{ patch_apply_approval.region }}.
+
+- name: Set current DB Home fact
+  ansible.builtin.set_fact:
+    patch_apply_db_home: "{{ patch_apply_db_home_current.db_homes[0] }}"
+
+- name: Fail when DB Home version has drifted since approval
+  ansible.builtin.assert:
+    that:
+      - >-
+        patch_apply_db_home.db_version | default('') ==
+        patch_apply_approval.db_home_current_version
+    fail_msg: >-
+      DB Home {{ patch_apply_approval.db_home_id }} version changed
+      from {{ patch_apply_approval.db_home_current_version }} to
+      {{ patch_apply_db_home.db_version | default('UNKNOWN') }} since
+      approval. Re-run discovery and approval before applying.
+
+- name: Re-fetch applicable patches to confirm the patch is still offered
+  oracle.oci.oci_database_db_home_patch_facts:
+    db_home_id: "{{ patch_apply_approval.db_home_id }}"
+    region: "{{ patch_apply_approval.region }}"
+  register: patch_apply_current_patches
+
+- name: Find approved patch among current candidates
+  ansible.builtin.set_fact:
+    patch_apply_matching_patch: >-
+      {{
+        patch_apply_current_patches.db_home_patches
+        | default([])
+        | selectattr(
+            'id', 'equalto', patch_apply_approval.approved_patch_id
+          )
+        | list
+      }}
+
+- name: Fail when the approved patch is no longer available for PRECHECK
+  ansible.builtin.assert:
+    that:
+      - patch_apply_matching_patch | length > 0
+      - >-
+        patch_apply_precheck_action in
+        (patch_apply_matching_patch[0].available_actions | default([]))
+    fail_msg: >-
+      Patch {{ patch_apply_approval.approved_patch_id }} is no longer
+      listed as available for {{ patch_apply_precheck_action }} on DB
+      Home {{ patch_apply_approval.db_home_id }}.
+
+- name: Fetch existing patch history
+  oracle.oci.oci_database_db_home_patch_history_entry_facts:
+    db_home_id: "{{ patch_apply_approval.db_home_id }}"
+    region: "{{ patch_apply_approval.region }}"
+  register: patch_apply_history_before
+
+- name: Find any existing successful PRECHECK for the approved patch
+  ansible.builtin.set_fact:
+    patch_apply_existing_precheck_success: >-
+      {{
+        patch_apply_history_before.db_home_patch_history_entries
+        | default([])
+        | selectattr(
+            'patch_id', 'equalto', patch_apply_approval.approved_patch_id
+          )
+        | selectattr('action', 'equalto', patch_apply_precheck_action)
+        | selectattr('lifecycle_state', 'equalto', 'SUCCEEDED')
+        | list
+      }}
+
+- name: Reuse existing successful PRECHECK when already run
+  ansible.builtin.set_fact:
+    patch_apply_precheck_result: >-
+      {{ patch_apply_existing_precheck_success[-1] }}
+  when: patch_apply_existing_precheck_success | length > 0
+
+- name: Submit and monitor a new PRECHECK when not already succeeded
+  when: patch_apply_existing_precheck_success | length == 0
+  block:
+    - name: Fail when a patch operation is already in progress
+      ansible.builtin.assert:
+        that:
+          - >-
+            patch_apply_history_before.db_home_patch_history_entries
+            | default([])
+            | selectattr('lifecycle_state', 'in', ['IN_PROGRESS', 'SCHEDULED'])
+            | list
+            | length == 0
+        fail_msg: >-
+          A patch operation is already in progress for DB Home
+          {{ patch_apply_approval.db_home_id }}. Wait for it to
+          complete before starting a new PRECHECK.
+
+    - name: Capture existing PRECHECK history entry IDs before submission
+      ansible.builtin.set_fact:
+        patch_apply_precheck_before_ids: >-
+          {{
+            patch_apply_history_before.db_home_patch_history_entries
+            | default([])
+            | selectattr(
+                'patch_id', 'equalto', patch_apply_approval.approved_patch_id
+              )
+            | selectattr('action', 'equalto', patch_apply_precheck_action)
+            | map(attribute='id')
+            | list
+          }}
+
+    - name: Submit OCI PRECHECK for the approved patch
+      oracle.oci.oci_database_db_home:
+        db_home_id: "{{ patch_apply_approval.db_home_id }}"
+        patch_details:
+          patch_id: "{{ patch_apply_approval.approved_patch_id }}"
+          action: "{{ patch_apply_precheck_action }}"
+        region: "{{ patch_apply_approval.region }}"
+      register: patch_apply_precheck_submit
+
+    - name: Monitor OCI PRECHECK until it reaches a terminal state
+      ansible.builtin.include_tasks: monitor_operation.yml
+      vars:
+        patch_apply_monitor_action: "{{ patch_apply_precheck_action }}"
+        patch_apply_monitor_before_ids: "{{ patch_apply_precheck_before_ids }}"
+
+    - name: Fail when PRECHECK did not succeed
+      ansible.builtin.assert:
+        that:
+          - patch_apply_monitor_result.lifecycle_state == 'SUCCEEDED'
+        fail_msg: >-
+          PRECHECK for patch {{ patch_apply_approval.approved_patch_id }}
+          on DB Home {{ patch_apply_approval.db_home_id }} ended with
+          state {{ patch_apply_monitor_result.lifecycle_state }}.
+          Investigate the OCI work request before retrying.
+
+    - name: Set precheck result from monitored operation
+      ansible.builtin.set_fact:
+        patch_apply_precheck_result: "{{ patch_apply_monitor_result }}"
+
+- name: Persist precheck result for later stages
+  ansible.builtin.copy:
+    dest: >-
+      {{ patch_apply_dir }}/{{ patch_apply_approval.db_home_id
+      }}_precheck.json
+    mode: "0640"
+    content: "{{ patch_apply_precheck_result | to_nice_json }}"
+
+- name: Display precheck stage result
+  ansible.builtin.debug:
+    msg:
+      - "DB Home: {{ patch_apply_approval.db_home_id }}"
+      - "Patch: {{ patch_apply_approval.approved_patch_id }}"
+      - "PRECHECK state: {{ patch_apply_precheck_result.lifecycle_state }}"

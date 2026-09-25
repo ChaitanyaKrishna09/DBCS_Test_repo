@@ -1,0 +1,7 @@
+---
+patch_validation_oracle_home: "{{ oracle_home }}"
+patch_validation_oracle_sid: "{{ ansible_env.ORACLE_SID | default(db_name) }}"
+patch_validation_opatch_bin: "{{ patch_validation_oracle_home }}/OPatch/opatch"
+patch_validation_sqlplus_bin: "{{ patch_validation_oracle_home }}/bin/sqlplus"
+patch_validation_connect_string: "/ as sysdba"
+patch_validation_result_dir: "{{ patch_apply_dir }}"

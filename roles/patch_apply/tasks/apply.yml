@@ -1,0 +1,141 @@
+---
+- name: Load approved patch record
+  ansible.builtin.include_tasks: load_approval.yml
+
+- name: Load persisted precheck result
+  ansible.builtin.set_fact:
+    patch_apply_precheck_file: >-
+      {{ patch_apply_dir }}/{{ patch_apply_approval.db_home_id
+      }}_precheck.json
+
+- name: Check precheck result file exists
+  ansible.builtin.stat:
+    path: "{{ patch_apply_precheck_file }}"
+  register: patch_apply_precheck_stat
+
+- name: Fail when precheck has not been run
+  ansible.builtin.assert:
+    that:
+      - patch_apply_precheck_stat.stat.exists
+    fail_msg: >-
+      No precheck result found at {{ patch_apply_precheck_file }}.
+      Run the precheck stage (patch_apply_stage=precheck) before
+      applying the patch.
+
+- name: Load precheck result
+  ansible.builtin.set_fact:
+    patch_apply_precheck_result: >-
+      {{ lookup('file', patch_apply_precheck_file) | from_json }}
+
+- name: Fail when precheck did not succeed for the approved patch
+  ansible.builtin.assert:
+    that:
+      - patch_apply_precheck_result.lifecycle_state == 'SUCCEEDED'
+      - >-
+        patch_apply_precheck_result.patch_id ==
+        patch_apply_approval.approved_patch_id
+    fail_msg: >-
+      Persisted precheck result does not show a SUCCEEDED PRECHECK
+      for patch {{ patch_apply_approval.approved_patch_id }}. Re-run
+      the precheck stage before applying.
+
+- name: Fetch existing patch history
+  oracle.oci.oci_database_db_home_patch_history_entry_facts:
+    db_home_id: "{{ patch_apply_approval.db_home_id }}"
+    region: "{{ patch_apply_approval.region }}"
+  register: patch_apply_history_before
+
+- name: Find any existing successful APPLY for the approved patch
+  ansible.builtin.set_fact:
+    patch_apply_existing_apply_success: >-
+      {{
+        patch_apply_history_before.db_home_patch_history_entries
+        | default([])
+        | selectattr(
+            'patch_id', 'equalto', patch_apply_approval.approved_patch_id
+          )
+        | selectattr('action', 'equalto', patch_apply_apply_action)
+        | selectattr('lifecycle_state', 'equalto', 'SUCCEEDED')
+        | list
+      }}
+
+- name: Reuse existing successful APPLY when already run
+  ansible.builtin.set_fact:
+    patch_apply_apply_result: "{{ patch_apply_existing_apply_success[-1] }}"
+  when: patch_apply_existing_apply_success | length > 0
+
+- name: Submit and monitor a new APPLY when not already succeeded
+  when: patch_apply_existing_apply_success | length == 0
+  block:
+    - name: Fail when a patch operation is already in progress
+      ansible.builtin.assert:
+        that:
+          - >-
+            patch_apply_history_before.db_home_patch_history_entries
+            | default([])
+            | selectattr('lifecycle_state', 'in', ['IN_PROGRESS', 'SCHEDULED'])
+            | list
+            | length == 0
+        fail_msg: >-
+          A patch operation is already in progress for DB Home
+          {{ patch_apply_approval.db_home_id }}. Wait for it to
+          complete before starting APPLY.
+
+    - name: Capture existing APPLY history entry IDs before submission
+      ansible.builtin.set_fact:
+        patch_apply_apply_before_ids: >-
+          {{
+            patch_apply_history_before.db_home_patch_history_entries
+            | default([])
+            | selectattr(
+                'patch_id', 'equalto', patch_apply_approval.approved_patch_id
+              )
+            | selectattr('action', 'equalto', patch_apply_apply_action)
+            | map(attribute='id')
+            | list
+          }}
+
+    - name: Submit OCI APPLY for the approved patch
+      oracle.oci.oci_database_db_home:
+        db_home_id: "{{ patch_apply_approval.db_home_id }}"
+        patch_details:
+          patch_id: "{{ patch_apply_approval.approved_patch_id }}"
+          action: "{{ patch_apply_apply_action }}"
+        region: "{{ patch_apply_approval.region }}"
+      register: patch_apply_apply_submit
+
+    - name: Monitor OCI APPLY until it reaches a terminal state
+      ansible.builtin.include_tasks: monitor_operation.yml
+      vars:
+        patch_apply_monitor_action: "{{ patch_apply_apply_action }}"
+        patch_apply_monitor_before_ids: "{{ patch_apply_apply_before_ids }}"
+
+    - name: Fail when APPLY did not succeed
+      ansible.builtin.assert:
+        that:
+          - patch_apply_monitor_result.lifecycle_state == 'SUCCEEDED'
+        fail_msg: >-
+          APPLY for patch {{ patch_apply_approval.approved_patch_id }}
+          on DB Home {{ patch_apply_approval.db_home_id }} ended with
+          state {{ patch_apply_monitor_result.lifecycle_state }}.
+          Do not re-run automated post-apply validation until the
+          OCI work request has been investigated.
+
+    - name: Set apply result from monitored operation
+      ansible.builtin.set_fact:
+        patch_apply_apply_result: "{{ patch_apply_monitor_result }}"
+
+- name: Persist apply result for later stages
+  ansible.builtin.copy:
+    dest: >-
+      {{ patch_apply_dir }}/{{ patch_apply_approval.db_home_id
+      }}_apply.json
+    mode: "0640"
+    content: "{{ patch_apply_apply_result | to_nice_json }}"
+
+- name: Display apply stage result
+  ansible.builtin.debug:
+    msg:
+      - "DB Home: {{ patch_apply_approval.db_home_id }}"
+      - "Patch: {{ patch_apply_approval.approved_patch_id }}"
+      - "APPLY state: {{ patch_apply_apply_result.lifecycle_state }}"

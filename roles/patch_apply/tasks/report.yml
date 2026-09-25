@@ -1,0 +1,113 @@
+---
+- name: Load approved patch record
+  ansible.builtin.include_tasks: load_approval.yml
+
+- name: Load persisted precheck result
+  ansible.builtin.set_fact:
+    patch_apply_precheck_result: >-
+      {{
+        lookup(
+          'file',
+          patch_apply_dir ~ '/' ~ patch_apply_approval.db_home_id
+          ~ '_precheck.json'
+        )
+        | from_json
+      }}
+  ignore_errors: true
+
+- name: Load persisted apply result
+  ansible.builtin.set_fact:
+    patch_apply_apply_result: >-
+      {{
+        lookup(
+          'file',
+          patch_apply_dir ~ '/' ~ patch_apply_approval.db_home_id
+          ~ '_apply.json'
+        )
+        | from_json
+      }}
+  ignore_errors: true
+
+- name: Discover per-host post-apply validation results
+  ansible.builtin.find:
+    paths: "{{ patch_apply_dir }}"
+    patterns: "*_post_apply_validation.json"
+  register: patch_apply_validation_files
+
+- name: Load each post-apply validation result
+  ansible.builtin.set_fact:
+    patch_apply_validation_results: >-
+      {{
+        patch_apply_validation_results | default([])
+        + [lookup('file', item.path) | from_json]
+      }}
+  loop: "{{ patch_apply_validation_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Compute overall patch apply status
+  ansible.builtin.set_fact:
+    patch_apply_overall_status: >-
+      {{
+        'SUCCESS'
+        if (
+          (patch_apply_apply_result.lifecycle_state | default('')) ==
+          'SUCCEEDED'
+          and
+          (
+            patch_apply_validation_results | default([])
+            | selectattr('validation_status', 'equalto', 'FAILED')
+            | list
+            | length
+          ) == 0
+        )
+        else 'FAILED'
+      }}
+
+- name: Ensure report directory exists
+  ansible.builtin.file:
+    path: "{{ patch_apply_dir }}/report"
+    state: directory
+    mode: "0750"
+
+- name: Write consolidated JSON report
+  ansible.builtin.copy:
+    dest: >-
+      {{ patch_apply_dir }}/report/{{ patch_apply_approval.db_home_id
+      }}_patch_apply_report.json
+    mode: "0640"
+    content: >-
+      {{
+        {
+          'db_home_id': patch_apply_approval.db_home_id,
+          'approval': patch_apply_approval,
+          'precheck_result': patch_apply_precheck_result | default(omit),
+          'apply_result': patch_apply_apply_result | default(omit),
+          'validation_results': patch_apply_validation_results | default([]),
+          'overall_status': patch_apply_overall_status,
+          'report_generated_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')
+        }
+        | to_nice_json
+      }}
+
+- name: Write consolidated HTML report
+  ansible.builtin.template:
+    src: patch_apply_report.html.j2
+    dest: >-
+      {{ patch_apply_dir }}/report/{{ patch_apply_approval.db_home_id
+      }}_patch_apply_report.html
+    mode: "0640"
+
+- name: Publish patch apply stats
+  ansible.builtin.set_stats:
+    data:
+      patch_apply_db_home_id: "{{ patch_apply_approval.db_home_id }}"
+      patch_apply_patch_id: "{{ patch_apply_approval.approved_patch_id }}"
+      patch_apply_overall_status: "{{ patch_apply_overall_status }}"
+
+- name: Display final patch apply status
+  ansible.builtin.debug:
+    msg: >-
+      Patch apply overall status for DB Home
+      {{ patch_apply_approval.db_home_id }}:
+      {{ patch_apply_overall_status }}

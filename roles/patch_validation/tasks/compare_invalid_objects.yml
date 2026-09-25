@@ -1,0 +1,53 @@
+---
+- name: Capture post-apply invalid object counts
+  ansible.builtin.include_tasks: >-
+    {{ playbook_dir }}/roles/Invalid_count/tasks/Invalid_validations.yaml
+
+- name: Set post-apply invalid object totals
+  ansible.builtin.set_fact:
+    patch_validation_post_apply_invalid_total: >-
+      {{ (invalid_sys_count | int) + (invalid_system_count | int) }}
+    patch_validation_baseline_invalid_total: >-
+      {{
+        (patch_validation_baseline.invalid_sys_count | int)
+        + (patch_validation_baseline.invalid_system_count | int)
+      }}
+
+- name: Compile invalid objects when the post-apply count increased
+  when: >-
+    (patch_validation_post_apply_invalid_total | int) >
+    (patch_validation_baseline_invalid_total | int)
+  block:
+    - name: Run utlrp.sql to recompile invalid objects
+      ansible.builtin.include_tasks: >-
+        {{ playbook_dir }}/roles/Invalid_count/tasks/compile_invalids.yaml
+
+    - name: Re-capture invalid object counts after recompilation
+      ansible.builtin.include_tasks: >-
+        {{ playbook_dir }}/roles/Invalid_count/tasks/Invalid_validations.yaml
+
+    - name: Update post-apply invalid object total after recompilation
+      ansible.builtin.set_fact:
+        patch_validation_post_apply_invalid_total: >-
+          {{ (invalid_sys_count | int) + (invalid_system_count | int) }}
+
+- name: Determine invalid object comparison status
+  ansible.builtin.set_fact:
+    patch_validation_invalid_status: >-
+      {{
+        'PASSED'
+        if (patch_validation_post_apply_invalid_total | int) <=
+        (patch_validation_baseline_invalid_total | int)
+        else 'FAILED'
+      }}
+
+- name: Display invalid object comparison outcome
+  ansible.builtin.debug:
+    msg:
+      - >-
+        Baseline invalid objects:
+        {{ patch_validation_baseline_invalid_total }}
+      - >-
+        Final invalid objects:
+        {{ patch_validation_post_apply_invalid_total }}
+      - "Status: {{ patch_validation_invalid_status }}"

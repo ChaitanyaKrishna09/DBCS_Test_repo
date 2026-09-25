@@ -1,0 +1,46 @@
+---
+- name: Assert DB Home identifier is provided
+  ansible.builtin.assert:
+    that:
+      - patch_apply_db_home_id | default('') | length > 0
+    fail_msg: >-
+      db_home_id is required to load the approved patch record.
+
+- name: Set approval file path
+  ansible.builtin.set_fact:
+    patch_apply_approval_file: >-
+      {{
+        patch_apply_approval_file
+        | default(
+            patch_approval_dir ~ '/latest/' ~ patch_apply_db_home_id ~ '.json'
+          )
+      }}
+
+- name: Check approval file exists
+  ansible.builtin.stat:
+    path: "{{ patch_apply_approval_file }}"
+  register: patch_apply_approval_stat
+
+- name: Fail when no active approval exists
+  ansible.builtin.assert:
+    that:
+      - patch_apply_approval_stat.stat.exists
+    fail_msg: >-
+      No active approval file found at {{ patch_apply_approval_file }}.
+      Run patch_approval_main.yaml to approve a patch for DB Home
+      {{ patch_apply_db_home_id }} before applying.
+
+- name: Load approval record
+  ansible.builtin.set_fact:
+    patch_apply_approval: >-
+      {{ lookup('file', patch_apply_approval_file) | from_json }}
+
+- name: Fail when the loaded approval is not APPROVED
+  ansible.builtin.assert:
+    that:
+      - patch_apply_approval.approval_status == 'APPROVED'
+    fail_msg: >-
+      Approval record {{ patch_apply_approval.approval_id }} has
+      status {{ patch_apply_approval.approval_status }}, not
+      APPROVED. Patching cannot proceed on a rejected or superseded
+      approval.

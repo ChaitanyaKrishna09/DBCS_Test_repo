@@ -1,0 +1,7 @@
+---
+patch_apply_dir: "{{ playbook_dir }}/apply"
+patch_approval_dir: "{{ playbook_dir }}/approvals"
+patch_apply_precheck_action: "PRECHECK"
+patch_apply_apply_action: "APPLY"
+patch_apply_monitor_interval_seconds: 30
+patch_apply_monitor_max_attempts: 40

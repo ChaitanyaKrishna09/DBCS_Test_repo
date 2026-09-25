@@ -100,3 +100,83 @@ ansible-playbook patch_approval_main.yaml \
   -e change_ticket=<change_ticket> \
   -e decision=APPROVED
 ```
+
+## Apply the approved DB patch and validate
+
+`patch_apply_main.yaml` applies the DB Home patch that was approved by
+`patch_approval_main.yaml`, then validates the result. It runs five
+plays in order:
+
+1. **Precheck (localhost)** - reloads the active approval, re-verifies
+   it has not expired or drifted from the current DB Home state and
+   available patch list in OCI, then submits an OCI PRECHECK (or
+   reuses a prior successful one) and polls until it reaches a
+   terminal state.
+2. **Pre-apply gate (DB hosts)** - reuses the existing
+   `backup_validation` role to confirm a recent, valid backup exists,
+   then captures a pre-apply invalid object baseline (SYS/SYSTEM
+   owners) using the existing `Invalid_count` role and writes it back
+   to the controller.
+3. **Apply (localhost)** - reloads the approval and the persisted
+   precheck result, submits an OCI APPLY (or reuses a prior successful
+   one), and polls until it reaches a terminal state.
+4. **Post-apply validation (DB hosts)** - verifies the OPatch inventory
+   and `DBA_REGISTRY_SQLPATCH` reflect the applied patch version, then
+   compares the invalid object count against the pre-apply baseline,
+   automatically running `utlrp.sql` (via the existing `Invalid_count`
+   role) and re-checking when the count increased. Each host's result
+   is written back to the controller and the play fails on that host
+   if any check does not pass.
+5. **Report (localhost)** - consolidates the approval, precheck,
+   apply, and every host's validation result into JSON and HTML
+   reports and publishes summary stats.
+
+All OCI submissions are idempotent: a stage that already has a
+successful PRECHECK or APPLY history entry for the exact patch is
+skipped and the existing result is reused, so the playbook is safe to
+re-run after a partial failure.
+
+Required runtime variables:
+
+- `db_home_id`: DB Home OCID to patch (must have an active approval
+  from `patch_approval_main.yaml`)
+- `patch_version`: approved patch version, used for post-apply
+  validation
+- `instance`: config file name (without extension) under `config/`
+  for the target database host(s), for example `DB0609`
+
+Required inventory/host variables (via `config/<instance>.yaml` or
+extra vars):
+
+- `db_user`, `ENV_HOME`, `ENV_FILE`, `oracle_home`, `db_name`
+
+Optional runtime variables:
+
+- `patch_apply_target_group`: inventory group/host pattern for the
+  database host plays, default `all`
+- `patch_apply_dir`: controller-side working directory for
+  precheck/apply/validation/report artifacts, default `apply/`
+- `patch_approval_dir`: controller-side approval directory used to
+  load the active approval, default `approvals/`
+
+Persisted output (under `patch_apply_dir`):
+
+- `<db_home_id>_precheck.json`, `<db_home_id>_apply.json`: OCI
+  operation results
+- `<host>_pre_apply_invalid_baseline.json`: pre-apply invalid object
+  baseline per database host
+- `<host>_post_apply_validation.json`: post-apply validation result
+  per database host
+- `report/<db_home_id>_patch_apply_report.json` and
+  `report/<db_home_id>_patch_apply_report.html`: consolidated report
+
+Example:
+
+```text
+ansible-playbook -i <oci_inventory>,<db_host_inventory> \
+  patch_apply_main.yaml \
+  -e db_home_id=<db_home_ocid> \
+  -e patch_version=<patch_version> \
+  -e instance=DB0609 \
+  -e patch_apply_target_group=<db_host_group>
+```

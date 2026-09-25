@@ -1,0 +1,29 @@
+---
+- name: Check OPatch inventory for the applied patch version
+  ansible.builtin.command:
+    cmd: "{{ patch_validation_opatch_bin }} lsinventory"
+  environment:
+    ORACLE_HOME: "{{ patch_validation_oracle_home }}"
+    PATH: >-
+      {{ patch_validation_oracle_home }}/bin:{{ ansible_env.PATH
+      | default('/usr/bin:/bin') }}
+  register: patch_validation_opatch_result
+  changed_when: false
+  failed_when: patch_validation_opatch_result.rc != 0
+
+- name: Determine OPatch verification status
+  ansible.builtin.set_fact:
+    patch_validation_opatch_status: >-
+      {{
+        'PASSED'
+        if patch_validation_expected_patch_version
+        in patch_validation_opatch_result.stdout
+        else 'FAILED'
+      }}
+
+- name: Display OPatch verification outcome
+  ansible.builtin.debug:
+    msg: >-
+      OPatch inventory check for expected patch version
+      {{ patch_validation_expected_patch_version }}:
+      {{ patch_validation_opatch_status }}

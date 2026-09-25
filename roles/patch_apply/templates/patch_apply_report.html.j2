@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DB Patch Apply Report - {{ patch_apply_approval.db_home_id }}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+  h1, h2 { color: #1a3c6e; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background-color: #f0f4f8; }
+  .status-success { color: #1a7a1a; font-weight: bold; }
+  .status-failed { color: #b00020; font-weight: bold; }
+  .status-succeeded { color: #1a7a1a; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>DB Patch Apply Report</h1>
+<table>
+  <tr><th>Report Generated At</th><td>{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}</td></tr>
+  <tr><th>DB Home OCID</th><td>{{ patch_apply_approval.db_home_id }}</td></tr>
+  <tr><th>Approved Patch OCID</th><td>{{ patch_apply_approval.approved_patch_id }}</td></tr>
+  <tr><th>Approved Patch Version</th><td>{{ patch_apply_approval.approved_patch_version }}</td></tr>
+  <tr><th>Approved By</th><td>{{ patch_apply_approval.approved_by | default('N/A') }}</td></tr>
+  <tr>
+    <th>Overall Status</th>
+    <td class="status-{{ patch_apply_overall_status | lower }}">{{ patch_apply_overall_status }}</td>
+  </tr>
+</table>
+
+<h2>Precheck Result</h2>
+{% if patch_apply_precheck_result is defined %}
+<table>
+  <tr><th>Lifecycle State</th><td>{{ patch_apply_precheck_result.lifecycle_state | default('N/A') }}</td></tr>
+  <tr><th>Time Started</th><td>{{ patch_apply_precheck_result.time_started | default('N/A') }}</td></tr>
+  <tr><th>Time Ended</th><td>{{ patch_apply_precheck_result.time_ended | default('N/A') }}</td></tr>
+</table>
+{% else %}
+<p>No precheck result available.</p>
+{% endif %}
+
+<h2>Apply Result</h2>
+{% if patch_apply_apply_result is defined %}
+<table>
+  <tr><th>Lifecycle State</th><td>{{ patch_apply_apply_result.lifecycle_state | default('N/A') }}</td></tr>
+  <tr><th>Time Started</th><td>{{ patch_apply_apply_result.time_started | default('N/A') }}</td></tr>
+  <tr><th>Time Ended</th><td>{{ patch_apply_apply_result.time_ended | default('N/A') }}</td></tr>
+</table>
+{% else %}
+<p>No apply result available.</p>
+{% endif %}
+
+<h2>Post-Apply Host Validation Results</h2>
+{% if patch_apply_validation_results | default([]) | length > 0 %}
+<table>
+  <tr>
+    <th>Host</th>
+    <th>OPatch Check</th>
+    <th>SQL Patch Registry</th>
+    <th>Invalid Objects Baseline</th>
+    <th>Invalid Objects Final</th>
+    <th>Status</th>
+  </tr>
+  {% for result in patch_apply_validation_results %}
+  <tr>
+    <td>{{ result.hostname | default('N/A') }}</td>
+    <td>{{ result.opatch_status | default('N/A') }}</td>
+    <td>{{ result.sql_patch_status | default('N/A') }}</td>
+    <td>{{ result.invalid_objects_baseline | default('N/A') }}</td>
+    <td>{{ result.invalid_objects_final | default('N/A') }}</td>
+    <td class="status-{{ (result.validation_status | default('unknown')) | lower }}">
+      {{ result.validation_status | default('UNKNOWN') }}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No post-apply host validation results were found.</p>
+{% endif %}
+
+</body>
+</html>

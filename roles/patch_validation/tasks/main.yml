@@ -1,0 +1,51 @@
+---
+- name: Assert required post-apply validation variables are present
+  ansible.builtin.assert:
+    that:
+      - db_user is defined
+      - ENV_HOME is defined
+      - ENV_FILE is defined
+      - oracle_home is defined
+      - db_name is defined
+      - patch_validation_expected_patch_version | default('') | length > 0
+    fail_msg: >-
+      Required variables (db_user, ENV_HOME, ENV_FILE, oracle_home,
+      db_name, patch_validation_expected_patch_version) are missing.
+
+- name: Load pre-apply invalid object baseline
+  ansible.builtin.set_fact:
+    patch_validation_baseline_file: >-
+      {{ patch_validation_result_dir }}/{{ inventory_hostname
+      }}_pre_apply_invalid_baseline.json
+
+- name: Check pre-apply baseline file exists
+  ansible.builtin.stat:
+    path: "{{ patch_validation_baseline_file }}"
+  register: patch_validation_baseline_stat
+  delegate_to: localhost
+
+- name: Fail when no pre-apply baseline was captured for this host
+  ansible.builtin.assert:
+    that:
+      - patch_validation_baseline_stat.stat.exists
+    fail_msg: >-
+      No pre-apply invalid object baseline found at
+      {{ patch_validation_baseline_file }}. Re-run the pre-apply gate
+      play for {{ inventory_hostname }} before validating.
+
+- name: Load pre-apply baseline
+  ansible.builtin.set_fact:
+    patch_validation_baseline: >-
+      {{ lookup('file', patch_validation_baseline_file) | from_json }}
+
+- name: Verify OPatch inventory reflects the applied patch
+  ansible.builtin.include_tasks: verify_opatch.yml
+
+- name: Verify SQL patch registry reflects the applied patch
+  ansible.builtin.include_tasks: verify_sql_patch.yml
+
+- name: Compare post-apply invalid object counts against baseline
+  ansible.builtin.include_tasks: compare_invalid_objects.yml
+
+- name: Persist consolidated post-apply validation result
+  ansible.builtin.include_tasks: persist_result.yml
