@@ -1,0 +1,25 @@
+---
+- name: Publish patch approval workflow statistics
+  ansible.builtin.set_stats:
+    data:
+      patch_approval_status: "{{ patch_approval_decision }}"
+      patch_approval_id: "{{ patch_approval_id }}"
+      patch_approval_timestamp: "{{ patch_approval_timestamp }}"
+      patch_approval_db_home_id: "{{ patch_approval_db_home_id }}"
+      patch_approval_patch_id: "{{ patch_approval_patch_id }}"
+      patch_approval_patch_version: "{{ patch_approval_patch_version }}"
+      patch_approval_history_file: "{{ patch_approval_history_file }}"
+      patch_approval_report_file: "{{ patch_approval_report_file }}"
+      patch_approval_latest_file: >-
+        {{ patch_approval_latest_output_file
+        if patch_approval_decision == 'APPROVED'
+        else 'N/A' }}
+    per_host: false
+
+- name: Display patch approval result
+  ansible.builtin.debug:
+    msg:
+      - "Approval ID: {{ patch_approval_id }}"
+      - "Status: {{ patch_approval_decision }}"
+      - "History record: {{ patch_approval_history_file }}"
+      - "Summary report: {{ patch_approval_report_file }}"

@@ -1,0 +1,42 @@
+---
+- name: Set latest approval file path for this DB Home
+  ansible.builtin.set_fact:
+    patch_approval_latest_file: >-
+      {{ patch_approval_dir }}/latest/{{
+      patch_approval_db_home_id }}.json
+
+- name: Check for an existing active approval
+  ansible.builtin.stat:
+    path: "{{ patch_approval_latest_file }}"
+  register: patch_approval_latest_stat
+
+- name: Load existing active approval record
+  ansible.builtin.set_fact:
+    patch_approval_existing_record: >-
+      {{ lookup('file', patch_approval_latest_file) | from_json }}
+  when: patch_approval_latest_stat.stat.exists
+
+- name: Archive existing approval as superseded
+  when:
+    - patch_approval_latest_stat.stat.exists
+    - patch_approval_existing_record.approval_status == 'APPROVED'
+  block:
+    - name: Build superseded record content
+      ansible.builtin.set_fact:
+        patch_approval_superseded_record: >-
+          {{
+            patch_approval_existing_record
+            | combine({'approval_status': 'SUPERSEDED'})
+          }}
+
+    - name: Set superseded history file path
+      ansible.builtin.set_fact:
+        patch_approval_superseded_path: >-
+          {{ patch_approval_dir }}/history/{{
+          patch_approval_existing_record.approval_id }}_superseded.json
+
+    - name: Write superseded approval history entry
+      ansible.builtin.copy:
+        dest: "{{ patch_approval_superseded_path }}"
+        mode: "0640"
+        content: "{{ patch_approval_superseded_record | to_nice_json }}"

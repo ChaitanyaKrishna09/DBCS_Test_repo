@@ -1,0 +1,12 @@
+---
+- name: Set patch approval summary report path
+  ansible.builtin.set_fact:
+    patch_approval_report_file: >-
+      {{ patch_approval_dir }}/history/{{
+      patch_approval_id }}_summary.html
+
+- name: Write patch approval summary report
+  ansible.builtin.template:
+    src: patch_approval_summary.html.j2
+    dest: "{{ patch_approval_report_file }}"
+    mode: "0640"

@@ -1,0 +1,41 @@
+---
+- name: Assert required patch approval variables are provided
+  ansible.builtin.assert:
+    that:
+      - patch_approval_db_home_id | default('') | length > 0
+      - patch_approval_patch_id | default('') | length > 0
+      - patch_approval_patch_version | default('') | length > 0
+      - patch_approval_discovery_report | default('') | length > 0
+      - patch_approval_approver | default('') | length > 0
+      - patch_approval_change_ticket | default('') | length > 0
+      - patch_approval_decision in ['APPROVED', 'REJECTED']
+    fail_msg: >-
+      patch_approval_db_home_id, patch_approval_patch_id,
+      patch_approval_patch_version, patch_approval_discovery_report,
+      patch_approval_approver, patch_approval_change_ticket and a valid
+      patch_approval_decision (APPROVED or REJECTED) are required.
+
+- name: Check discovery report file exists
+  ansible.builtin.stat:
+    path: "{{ patch_approval_discovery_report }}"
+  register: patch_approval_discovery_report_stat
+
+- name: Fail when discovery report file is missing
+  ansible.builtin.assert:
+    that:
+      - patch_approval_discovery_report_stat.stat.exists
+    fail_msg: >-
+      Discovery report {{ patch_approval_discovery_report }} was not
+      found. Run patch_discovery_main.yaml before requesting approval.
+
+- name: Ensure approval directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ patch_approval_dir }}"
+    - "{{ patch_approval_dir }}/latest"
+    - "{{ patch_approval_dir }}/history"
+  loop_control:
+    label: "{{ item }}"

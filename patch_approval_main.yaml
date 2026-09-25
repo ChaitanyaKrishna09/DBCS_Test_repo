@@ -1,0 +1,23 @@
+---
+- name: Capture and persist approved DBCS patch selection
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    patch_approval_db_home_id: "{{ db_home_id | default('') }}"
+    patch_approval_patch_id: "{{ patch_id | default('') }}"
+    patch_approval_patch_version: "{{ patch_version | default('') }}"
+    patch_approval_discovery_report: "{{ discovery_report | default('') }}"
+    patch_approval_approver: "{{ approver | default('') }}"
+    patch_approval_change_ticket: "{{ change_ticket | default('') }}"
+    patch_approval_decision: "{{ decision | default('APPROVED') }}"
+    patch_approval_environment: "{{ environment | default('') }}"
+    patch_approval_maintenance_window_start: >-
+      {{ maintenance_window_start | default('') }}
+    patch_approval_maintenance_window_end: >-
+      {{ maintenance_window_end | default('') }}
+    patch_approval_comments: "{{ comments | default('') }}"
+    patch_approval_expiry_hours: "{{ expiry_hours | default(72) }}"
+
+  roles:
+    - role: patch_approval

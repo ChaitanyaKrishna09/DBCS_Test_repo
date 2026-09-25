@@ -1,0 +1,8 @@
+---
+patch_approval_dir: "{{ playbook_dir }}/approvals"
+patch_approval_decision: "APPROVED"
+patch_approval_expiry_hours: 72
+patch_approval_environment: ""
+patch_approval_maintenance_window_start: ""
+patch_approval_maintenance_window_end: ""
+patch_approval_comments: ""

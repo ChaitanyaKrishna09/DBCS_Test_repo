@@ -1,0 +1,52 @@
+---
+- name: Fail when DB Home is absent from discovery report
+  ansible.builtin.assert:
+    that:
+      - patch_approval_db_home_entries | length > 0
+    fail_msg: >-
+      DB Home {{ patch_approval_db_home_id }} was not found in
+      discovery report {{ patch_approval_discovery_report }}. Rerun
+      patch_discovery_main.yaml so the target is current.
+
+- name: Set matched DB Home discovery entry
+  ansible.builtin.set_fact:
+    patch_approval_db_home_entry: "{{ patch_approval_db_home_entries[0] }}"
+
+- name: Extract matching patch candidates for approved decisions
+  ansible.builtin.set_fact:
+    patch_approval_patch_candidates: >-
+      {{
+        patch_approval_db_home_entry.available_patches
+        | selectattr('id', 'equalto', patch_approval_patch_id)
+        | list
+      }}
+  when: patch_approval_decision == 'APPROVED'
+
+- name: Fail when approved patch is not a discovered candidate
+  ansible.builtin.assert:
+    that:
+      - patch_approval_patch_candidates | length > 0
+    fail_msg: >-
+      Patch {{ patch_approval_patch_id }} was not listed as available
+      for DB Home {{ patch_approval_db_home_id }} in the discovery
+      report. Only patches discovered by patch_discovery_main.yaml may
+      be approved.
+  when: patch_approval_decision == 'APPROVED'
+
+- name: Set matched patch candidate
+  ansible.builtin.set_fact:
+    patch_approval_patch_candidate: "{{ patch_approval_patch_candidates[0] }}"
+  when: patch_approval_decision == 'APPROVED'
+
+- name: Fail when approved version does not match discovered version
+  ansible.builtin.assert:
+    that:
+      - >-
+        patch_approval_patch_candidate.version | default('') ==
+        patch_approval_patch_version
+    fail_msg: >-
+      Approved patch version {{ patch_approval_patch_version }} does
+      not match the discovered version
+      {{ patch_approval_patch_candidate.version | default('UNKNOWN') }}
+      for patch {{ patch_approval_patch_id }}.
+  when: patch_approval_decision == 'APPROVED'

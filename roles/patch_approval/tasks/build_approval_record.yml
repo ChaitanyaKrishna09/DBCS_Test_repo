@@ -1,0 +1,54 @@
+---
+- name: Set patch approval timestamps
+  ansible.builtin.set_fact:
+    patch_approval_timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+    patch_approval_file_timestamp: >-
+      {{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}
+
+- name: Set patch approval expiry timestamp
+  ansible.builtin.set_fact:
+    patch_approval_expiry_timestamp: >-
+      {{
+        lookup(
+          'pipe',
+          'date -u -d "+' ~ (patch_approval_expiry_hours | int)
+          ~ ' hours" +%Y-%m-%dT%H:%M:%SZ'
+        )
+      }}
+  when: patch_approval_decision == 'APPROVED'
+
+- name: Set patch approval identifier
+  ansible.builtin.set_fact:
+    patch_approval_id: >-
+      {{ patch_approval_db_home_id }}_{{ patch_approval_file_timestamp }}
+
+- name: Build patch approval record
+  ansible.builtin.set_fact:
+    patch_approval_record:
+      approval_id: "{{ patch_approval_id }}"
+      approval_status: "{{ patch_approval_decision }}"
+      approval_timestamp: "{{ patch_approval_timestamp }}"
+      approval_expiry_hours: "{{ patch_approval_expiry_hours | int }}"
+      approval_expiry_timestamp: >-
+        {{ patch_approval_expiry_timestamp | default('N/A') }}
+      approver: "{{ patch_approval_approver }}"
+      change_ticket: "{{ patch_approval_change_ticket }}"
+      environment: "{{ patch_approval_environment }}"
+      maintenance_window_start: >-
+        {{ patch_approval_maintenance_window_start | default('') }}
+      maintenance_window_end: >-
+        {{ patch_approval_maintenance_window_end | default('') }}
+      comments: "{{ patch_approval_comments }}"
+      region: "{{ patch_approval_db_home_entry.region }}"
+      compartment_id: "{{ patch_approval_db_home_entry.compartment_id }}"
+      db_system_id: "{{ patch_approval_db_home_entry.db_system_id }}"
+      db_home_id: "{{ patch_approval_db_home_id }}"
+      db_home_current_version: >-
+        {{ patch_approval_db_home_entry.db_home.db_version
+        | default('UNKNOWN') }}
+      approved_patch_id: "{{ patch_approval_patch_id }}"
+      approved_patch_version: "{{ patch_approval_patch_version }}"
+      discovery_report: "{{ patch_approval_discovery_report }}"
+      discovery_timestamp: >-
+        {{ patch_approval_discovery_data.discovery_timestamp
+        | default('UNKNOWN') }}

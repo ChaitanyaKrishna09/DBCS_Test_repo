@@ -1,0 +1,14 @@
+---
+- name: Load patch discovery report contents
+  ansible.builtin.set_fact:
+    patch_approval_discovery_data: >-
+      {{ lookup('file', patch_approval_discovery_report) | from_json }}
+
+- name: Extract matching DB Home entries from discovery report
+  ansible.builtin.set_fact:
+    patch_approval_db_home_entries: >-
+      {{
+        patch_approval_discovery_data.db_homes
+        | selectattr('db_home.id', 'equalto', patch_approval_db_home_id)
+        | list
+      }}

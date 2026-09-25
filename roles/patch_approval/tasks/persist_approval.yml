@@ -1,0 +1,24 @@
+---
+- name: Set patch approval history file path
+  ansible.builtin.set_fact:
+    patch_approval_history_file: >-
+      {{ patch_approval_dir }}/history/{{ patch_approval_id }}.json
+
+- name: Set patch approval latest pointer path
+  ansible.builtin.set_fact:
+    patch_approval_latest_output_file: >-
+      {{ patch_approval_dir }}/latest/{{
+      patch_approval_db_home_id }}.json
+
+- name: Write patch approval history record
+  ansible.builtin.copy:
+    dest: "{{ patch_approval_history_file }}"
+    mode: "0640"
+    content: "{{ patch_approval_record | to_nice_json }}"
+
+- name: Write latest patch approval pointer
+  ansible.builtin.copy:
+    dest: "{{ patch_approval_latest_output_file }}"
+    mode: "0640"
+    content: "{{ patch_approval_record | to_nice_json }}"
+  when: patch_approval_decision == 'APPROVED'

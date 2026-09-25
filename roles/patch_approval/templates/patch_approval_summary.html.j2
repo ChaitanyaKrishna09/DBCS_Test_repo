@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBCS Patch Approval Record</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #222; }
+    h1 { color: #312d2a; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 24px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #e8e8e8; width: 260px; }
+    .approved { color: #247a2c; font-weight: bold; }
+    .rejected { color: #b3261e; font-weight: bold; }
+    .superseded { color: #9b5c00; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>DBCS Patch Approval Record</h1>
+  <table>
+    <tr>
+      <th>Approval ID</th>
+      <td>{{ patch_approval_record.approval_id }}</td>
+    </tr>
+    <tr>
+      <th>Status</th>
+      <td>
+        {% if patch_approval_record.approval_status == 'APPROVED' %}
+          <span class="approved">APPROVED</span>
+        {% elif patch_approval_record.approval_status == 'REJECTED' %}
+          <span class="rejected">REJECTED</span>
+        {% else %}
+          <span class="superseded">
+            {{ patch_approval_record.approval_status }}
+          </span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Environment</th>
+      <td>{{ patch_approval_record.environment | default('N/A') }}</td>
+    </tr>
+    <tr><th>Region</th><td>{{ patch_approval_record.region }}</td></tr>
+    <tr>
+      <th>Compartment OCID</th>
+      <td>{{ patch_approval_record.compartment_id }}</td>
+    </tr>
+    <tr>
+      <th>DB System OCID</th>
+      <td>{{ patch_approval_record.db_system_id }}</td>
+    </tr>
+    <tr>
+      <th>DB Home OCID</th>
+      <td>{{ patch_approval_record.db_home_id }}</td>
+    </tr>
+    <tr>
+      <th>Current DB Home version</th>
+      <td>{{ patch_approval_record.db_home_current_version }}</td>
+    </tr>
+    <tr>
+      <th>Approved patch OCID</th>
+      <td>{{ patch_approval_record.approved_patch_id }}</td>
+    </tr>
+    <tr>
+      <th>Approved patch version</th>
+      <td>{{ patch_approval_record.approved_patch_version }}</td>
+    </tr>
+    <tr><th>Approver</th><td>{{ patch_approval_record.approver }}</td></tr>
+    <tr>
+      <th>Change ticket</th>
+      <td>{{ patch_approval_record.change_ticket }}</td>
+    </tr>
+    <tr>
+      <th>Maintenance window start</th>
+      <td>
+        {{ patch_approval_record.maintenance_window_start | default('N/A') }}
+      </td>
+    </tr>
+    <tr>
+      <th>Maintenance window end</th>
+      <td>
+        {{ patch_approval_record.maintenance_window_end | default('N/A') }}
+      </td>
+    </tr>
+    <tr>
+      <th>Approval timestamp</th>
+      <td>{{ patch_approval_record.approval_timestamp }}</td>
+    </tr>
+    <tr>
+      <th>Approval expiry (hours)</th>
+      <td>{{ patch_approval_record.approval_expiry_hours }}</td>
+    </tr>
+    <tr>
+      <th>Approval expiry timestamp</th>
+      <td>
+        {{ patch_approval_record.approval_expiry_timestamp | default('N/A') }}
+      </td>
+    </tr>
+    <tr>
+      <th>Discovery report</th>
+      <td>{{ patch_approval_record.discovery_report }}</td>
+    </tr>
+    <tr>
+      <th>Discovery timestamp</th>
+      <td>{{ patch_approval_record.discovery_timestamp }}</td>
+    </tr>
+    <tr>
+      <th>Comments</th>
+      <td>{{ patch_approval_record.comments | default('') }}</td>
+    </tr>
+  </table>
+</body>
+</html>

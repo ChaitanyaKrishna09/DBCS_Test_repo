@@ -1,0 +1,25 @@
+---
+- name: Validate patch approval inputs
+  ansible.builtin.include_tasks: validate_inputs.yml
+
+- name: Load patch discovery catalog
+  ansible.builtin.include_tasks: load_discovery_catalog.yml
+
+- name: Validate approval decision against discovery catalog
+  ansible.builtin.include_tasks: validate_against_discovery.yml
+
+- name: Supersede any existing active approval for this DB Home
+  ansible.builtin.include_tasks: supersede_existing_approval.yml
+  when: patch_approval_decision == 'APPROVED'
+
+- name: Build patch approval record
+  ansible.builtin.include_tasks: build_approval_record.yml
+
+- name: Persist patch approval record
+  ansible.builtin.include_tasks: persist_approval.yml
+
+- name: Generate patch approval summary report
+  ansible.builtin.include_tasks: generate_report.yml
+
+- name: Publish patch approval workflow statistics
+  ansible.builtin.include_tasks: publish_stats.yml
