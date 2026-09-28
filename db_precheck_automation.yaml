@@ -1,6 +1,6 @@
 ---
 - name: Automate DBCS DB Prechecks
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
 
   collections:
