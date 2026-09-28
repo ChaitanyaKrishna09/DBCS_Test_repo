@@ -48,3 +48,9 @@ comments: ""
 expiry_hours: 72
 
 patch_apply_target_group: "all"
+
+smtp_server: "centroid-com.mail.protection.outlook.com"
+smtp_port: 25
+email_sender: "oracle@cenoiadolam01.ad.centroid.com"
+email_recipients:
+  - "madhuravani.peddi@centroid.com"

@@ -9,6 +9,7 @@
 
   collections:
     - oracle.oci
+    - community.general
 
   vars:
     patch_discovery_target_group: "{{ group1 }}"

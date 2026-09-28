@@ -40,6 +40,14 @@ ansible-playbook -i <oci_inventory> patch_discovery_main.yaml \
   -e region1=<oci_region>
 ```
 
+After generating the HTML report, the discovery role emails it to
+`email_recipients` using the SMTP relay settings in
+`config/<instance>.yaml` (`smtp_server`, `smtp_port`, and
+`email_sender`). The current `config/DB0609.yaml` values use the
+Centroid Microsoft 365 relay on port 25 and do not configure SMTP
+credentials; confirm the runner is permitted to relay through that
+host before running the playbook.
+
 ## Capture and persist approved DB patch version
 
 `patch_approval_main.yaml` records a DBA's patch decision and persists it
