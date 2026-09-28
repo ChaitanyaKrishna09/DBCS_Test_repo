@@ -1,7 +1,8 @@
 ---
 - name: Discover OCI DBCS patches for DBA review
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
+  connection: local
 
   vars_files:
     - "config/{{ instance }}.yaml"
@@ -13,5 +14,8 @@
     patch_discovery_target_group: "{{ group1 }}"
     patch_discovery_region: "{{ region1 | default('') }}"
 
-  roles:
-    - role: patch_discovery
+  tasks:
+    - name: Run patch discovery once for the inventory group
+      ansible.builtin.include_role:
+        name: patch_discovery
+      run_once: true
