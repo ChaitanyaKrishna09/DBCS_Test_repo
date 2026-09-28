@@ -29,7 +29,7 @@ Compile invalid database objects:
 # Patch workflow inputs. Replace required placeholder values before running.
 db_user: "oracle"
 
-group1: "REPLACE_WITH_DB_INVENTORY_GROUP"
+group1: "DBCS"
 region1: ""
 
 db_home_id: "REPLACE_WITH_DB_HOME_OCID"
