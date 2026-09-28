@@ -1,80 +1,159 @@
 ---
-- name: OCI DB Home patch precheck
+- name: Automated DB Home patch precheck
   hosts: localhost
-  connection: local
   gather_facts: false
 
   collections:
     - oracle.oci
 
   vars:
-    region1: "{{ region1 | default('us-ashburn-1') }}"
+    target: "{{ group1 | default('DBCS') }}"
+    target_region: "{{ region1 | default('us-ashburn-1') }}"
+    target_patch_id: "{{ patch_id | default('') }}"
+    target_patch_version: "{{ patch_version | default('') }}"
     db_home_id: "{{ db_home_id | default('') }}"
-    patch_id: "{{ patch_id | default('') }}"
-    patch_version: "{{ patch_version | default('') }}"
     precheck_poll_interval: "{{ precheck_poll_interval | default(30) }}"
     precheck_timeout_minutes: "{{ precheck_timeout_minutes | default(30) }}"
 
+  # Example usage:
+  # ansible-playbook db_precheck_automation.yaml \
+  #   -e group1=DB_GROUP \
+  #   -e region1=us-ashburn-1 \
+  #   -e patch_id=ocid1.dbpatch.oc1.iad.... \
+  #   -e db_home_id=ocid1.dbhome.oc1.iad....
+  #
+  # Or, if the patch is known by version only:
+  # ansible-playbook db_precheck_automation.yaml \
+  #   -e group1=DB_GROUP \
+  #   -e region1=us-ashburn-1 \
+  #   -e patch_version=23.26.3.0.0
+
   tasks:
-    - name: Validate required OCI inputs
+    - name: Validate required target variables
       ansible.builtin.assert:
         that:
-          - db_home_id is defined
-          - db_home_id | length > 0
-          - region1 is defined
-          - region1 | length > 0
-          - (patch_id is defined and patch_id | length > 0) or (patch_version is defined and patch_version | length > 0)
+          - target is defined
+          - target | length > 0
+          - target_patch_id is defined
+          - target_patch_id | length > 0
         fail_msg: >-
-          Required OCI values are missing.
-          Provide db_home_id, region1, and either patch_id or patch_version from the OCI Console.
+          Required input missing. Provide group1 and patch_id (or target_patch_id)
+          before running DB home precheck.
 
-    - name: Resolve patch OCID from version if version only was supplied
-      when: patch_id | length == 0 and patch_version | length > 0
+    - name: Resolve host list
+      ansible.builtin.set_fact:
+        target_list: "{{ groups[target] if target in groups else [target] }}"
+
+    - name: Fail if no inventory targets were resolved
+      ansible.builtin.assert:
+        that:
+          - target_list is defined
+          - target_list | length > 0
+        fail_msg: >-
+          Could not resolve any Oracle DB hosts for target '{{ target }}'.
+          Check the inventory group or host value passed to group1.
+
+    - name: Resolve db_home_id from inventory when it was not directly supplied
+      when: db_home_id | length == 0
       block:
-        - name: Get available patches for the DB Home
-          oracle.oci.oci_database_db_home_patch_facts:
-            db_home_id: "{{ db_home_id }}"
-            region: "{{ region1 }}"
-          register: patch_facts
+        - name: Discover DB Homes for target hosts
+          oracle.oci.oci_database_db_home_facts:
+            compartment_id: "{{ hostvars[item].compartment_id }}"
+            db_system_id: "{{ hostvars[item].db_system_id }}"
+            region: "{{ hostvars[item].region | default(target_region) }}"
+          loop: "{{ target_list }}"
+          register: db_home_details
+          when:
+            - item in hostvars
+            - hostvars[item].compartment_id is defined
+            - hostvars[item].db_system_id is defined
 
-        - name: Select target patch by version
+        - name: Extract DB Home IDs
           ansible.builtin.set_fact:
-            patch_id: >-
+            resolved_db_home_ids: >-
               {{
-                patch_facts.db_home_patches
+                db_home_details.results
                 | default([])
-                | selectattr('version', 'equalto', patch_version)
+                | selectattr('db_homes', 'defined')
+                | map(attribute='db_homes')
+                | flatten
                 | map(attribute='id')
                 | list
-                | first
-                | default('')
               }}
 
-        - name: Validate patch version resolved to an ID
+        - name: Validate DB Home discovery output
           ansible.builtin.assert:
             that:
-              - patch_id is defined
-              - patch_id | length > 0
+              - resolved_db_home_ids is defined
+              - resolved_db_home_ids | length > 0
             fail_msg: >-
-              No patch was found for version '{{ patch_version }}' in DB home '{{ db_home_id }}'.
+              No DB Homes were discovered for target '{{ target }}'.
+              Verify the inventory host metadata (compartment_id/db_system_id/region).
 
-    - name: Fetch latest DB Home patch history
+        - name: Set the first DB Home for precheck execution
+          ansible.builtin.set_fact:
+            resolved_db_home_id: "{{ resolved_db_home_ids[0] }}"
+
+    - name: Use directly supplied db_home_id
+      ansible.builtin.set_fact:
+        resolved_db_home_id: "{{ db_home_id }}"
+      when: db_home_id | length > 0
+
+    - name: Validate final DB Home ID
+      ansible.builtin.assert:
+        that:
+          - resolved_db_home_id is defined
+          - resolved_db_home_id | length > 0
+        fail_msg: >-
+          Unable to determine a valid DB home ID for the target. Provide db_home_id
+          explicitly or populate the inventory details for the target host.
+
+    - name: Resolve patch ID from version when version only was provided
+      when: target_patch_id | length == 0 and target_patch_version | length > 0
+      block:
+        - name: Fetch DB Home patches
+          oracle.oci.oci_database_db_home_patch_facts:
+            db_home_id: "{{ resolved_db_home_id }}"
+            region: "{{ target_region }}"
+          register: db_home_patch_facts
+
+        - name: Select patch matching the requested version
+          ansible.builtin.set_fact:
+            target_patch_id: >-
+              {{
+                db_home_patch_facts.db_home_patches
+                | default([])
+                | selectattr('version', 'equalto', target_patch_version)
+                | map(attribute='id')
+                | list | first | default('')
+              }}
+
+        - name: Validate resolved patch ID
+          ansible.builtin.assert:
+            that:
+              - target_patch_id is defined
+              - target_patch_id | length > 0
+            fail_msg: >-
+              No patch was found for version '{{ target_patch_version }}' in DB home
+              '{{ resolved_db_home_id }}'.
+
+    - name: Fetch recent patch history for the DB Home
       oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "{{ db_home_id }}"
-        region: "{{ region1 }}"
-      register: patch_history
+        db_home_id: "{{ resolved_db_home_id }}"
+        region: "{{ target_region }}"
+      register: db_home_patch_history
 
-    - name: Find PRECHECK entries for this patch
+    - name: Find matching PRECHECK records for the target patch
       ansible.builtin.set_fact:
         precheck_matches: >-
           {{
-            patch_history.db_home_patch_history_entries | default([])
-            | selectattr('patch_id', 'equalto', patch_id)
+            db_home_patch_history.db_home_patch_history_entries | default([])
+            | selectattr('patch_id', 'equalto', target_patch_id)
             | selectattr('action', 'equalto', 'PRECHECK')
             | list
           }}
 
-    - name: Select the latest PRECHECK result
+    - name: Find most recent PRECHECK result for this patch
       ansible.builtin.set_fact:
         latest_precheck: >-
           {{
@@ -86,31 +165,31 @@
         - precheck_matches is defined
         - precheck_matches | length > 0
 
-    - name: Trigger a fresh PRECHECK if none exists or last result was not successful
+    - name: Trigger a new PRECHECK when no successful run exists
       oracle.oci.oci_database_db_home:
-        db_home_id: "{{ db_home_id }}"
+        db_home_id: "{{ resolved_db_home_id }}"
         patch_details:
-          patch_id: "{{ patch_id }}"
+          patch_id: "{{ target_patch_id }}"
           action: PRECHECK
-        region: "{{ region1 }}"
+        region: "{{ target_region }}"
       register: precheck_trigger
       when:
         - latest_precheck is not defined or latest_precheck.lifecycle_state != 'SUCCEEDED'
 
-    - name: Poll for PRECHECK completion
+    - name: Poll PRECHECK status until terminal state is reached
       oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "{{ db_home_id }}"
-        region: "{{ region1 }}"
+        db_home_id: "{{ resolved_db_home_id }}"
+        region: "{{ target_region }}"
       register: precheck_status
       until:
         - precheck_status.db_home_patch_history_entries is defined
         - precheck_status.db_home_patch_history_entries | default([])
-          | selectattr('patch_id', 'equalto', patch_id)
+          | selectattr('patch_id', 'equalto', target_patch_id)
           | selectattr('action', 'equalto', 'PRECHECK')
           | list | length > 0
         - (
             precheck_status.db_home_patch_history_entries | default([])
-            | selectattr('patch_id', 'equalto', patch_id)
+            | selectattr('patch_id', 'equalto', target_patch_id)
             | selectattr('action', 'equalto', 'PRECHECK')
             | sort(attribute='time_started')
             | last
@@ -120,41 +199,41 @@
       when:
         - latest_precheck is not defined or latest_precheck.lifecycle_state != 'SUCCEEDED'
 
-    - name: Choose final PRECHECK result
+    - name: Determine final PRECHECK result after polling
       ansible.builtin.set_fact:
         final_precheck: >-
           {{
-            (
-              precheck_status.db_home_patch_history_entries | default([])
-              | selectattr('patch_id', 'equalto', patch_id)
-              | selectattr('action', 'equalto', 'PRECHECK')
-              | sort(attribute='time_started')
-              | last
-            )
+            (precheck_status.db_home_patch_history_entries | default([])
+            | selectattr('patch_id', 'equalto', target_patch_id)
+            | selectattr('action', 'equalto', 'PRECHECK')
+            | sort(attribute='time_started')
+            | last)
             if precheck_status is defined and precheck_status.db_home_patch_history_entries is defined
             else latest_precheck
           }}
 
-    - name: Display final PRECHECK result
+    - name: Show final PRECHECK summary
       ansible.builtin.debug:
         msg:
-          - "DB Home ID: {{ db_home_id }}"
-          - "Patch ID: {{ patch_id }}"
-          - "Patch State: {{ final_precheck.lifecycle_state | default('NOT_FOUND') }}"
+          - "DB Home ID: {{ resolved_db_home_id }}"
+          - "Patch ID: {{ target_patch_id }}"
+          - "Precheck State: {{ final_precheck.lifecycle_state | default('NOT_FOUND') }}"
           - "Started: {{ final_precheck.time_started | default('N/A') }}"
           - "Ended: {{ final_precheck.time_ended | default('N/A') }}"
-          - "Status: {{ final_precheck.status | default('N/A') }}"
+          - "Status Message: {{ final_precheck.status | default('N/A') }}"
+      when:
+        - final_precheck is defined
 
-    - name: Validate DB precheck readiness
+    - name: Validate DB patch precheck result
       ansible.builtin.assert:
         that:
           - final_precheck is defined
           - final_precheck.lifecycle_state == 'SUCCEEDED'
         fail_msg: >-
-          OCI DB PRECHECK did not pass.
-          DB Home: {{ db_home_id }}
-          Patch: {{ patch_id }}
+          DB patch PRECHECK failed for patch {{ target_patch_id }} in DB home
+          {{ resolved_db_home_id }}.
           Final state: {{ final_precheck.lifecycle_state | default('NOT_FOUND') }}
           Status: {{ final_precheck.status | default('N/A') }}
         success_msg: >-
-          OCI DB PRECHECK passed for patch {{ patch_id }} on DB Home {{ db_home_id }}.
+          DB patch PRECHECK succeeded for patch {{ target_patch_id }} in DB home
+          {{ resolved_db_home_id }}.
