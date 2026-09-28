@@ -1,6 +1,6 @@
 ---
 - name: Validate DB patch precheck readiness
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
 
   collections:
