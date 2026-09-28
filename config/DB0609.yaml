@@ -25,3 +25,25 @@ backup_homes:
   
 Compile invalid database objects:
   - oracle_home
+
+# Patch workflow inputs. Replace required placeholder values before running.
+db_user: "oracle"
+
+group1: "REPLACE_WITH_DB_INVENTORY_GROUP"
+region1: ""
+
+db_home_id: "REPLACE_WITH_DB_HOME_OCID"
+patch_id: "REPLACE_WITH_PATCH_OCID"
+patch_version: "REPLACE_WITH_PATCH_VERSION"
+discovery_report: "REPLACE_WITH_DISCOVERY_JSON_PATH"
+
+approver: "REPLACE_WITH_APPROVER"
+change_ticket: "REPLACE_WITH_CHANGE_TICKET"
+decision: "APPROVED"
+environment: "REPLACE_WITH_ENVIRONMENT"
+maintenance_window_start: ""
+maintenance_window_end: ""
+comments: ""
+expiry_hours: 72
+
+patch_apply_target_group: "all"

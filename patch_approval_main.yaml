@@ -3,6 +3,9 @@
   hosts: localhost
   gather_facts: false
 
+  vars_files:
+    - "config/{{ instance }}.yaml"
+
   vars:
     patch_approval_db_home_id: "{{ db_home_id | default('') }}"
     patch_approval_patch_id: "{{ patch_id | default('') }}"
