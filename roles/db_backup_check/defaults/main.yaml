@@ -1,0 +1,10 @@
+---
+# Default values for latest database backup validation.
+# Supply the SQL query in backup_check_sql; it should return a single row with:
+# latest_backup_time | backup_age_hours | backup_status
+backup_check_sql: ""
+backup_threshold_hours: 24
+backup_success_status_values:
+  - "SUCCESS"
+  - "OK"
+  - "COMPLETED"

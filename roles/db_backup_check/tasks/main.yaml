@@ -1,0 +1,70 @@
+---
+- name: Validate required backup check inputs
+  ansible.builtin.assert:
+    that:
+      - db_user is defined
+      - ENV_HOME is defined
+      - ENV_FILE is defined
+      - backup_threshold_hours is defined
+      - backup_check_sql is defined
+      - (backup_check_sql | trim | length > 0)
+    fail_msg: "Required backup validation variables are missing. Provide db_user, ENV_HOME, ENV_FILE, backup_threshold_hours, and backup_check_sql."
+
+- name: Query latest successful database backup details
+  ansible.builtin.shell: |
+    source {{ ENV_HOME }}/{{ ENV_FILE }}
+    sqlplus -s / as sysdba <<'SQL'
+    SET PAGESIZE 0
+    SET FEEDBACK OFF
+    SET VERIFY OFF
+    SET HEADING OFF
+    SET LINESIZE 2000
+    SET COLSEP "|"
+    {{ backup_check_sql }}
+    EXIT;
+    SQL
+  args:
+    executable: /bin/bash
+  register: backup_validation_sql_result
+  failed_when: false
+  changed_when: false
+
+- name: Ensure the query returned usable backup data
+  ansible.builtin.assert:
+    that:
+      - backup_validation_sql_result.rc == 0
+      - backup_validation_sql_result.stdout is defined
+      - (backup_validation_sql_result.stdout | trim | length > 0)
+      - backup_validation_sql_result.stdout_lines is defined
+      - (backup_validation_sql_result.stdout_lines | length > 0)
+    fail_msg: "No valid backup row was returned. Latest successful database backup is unavailable."
+
+- name: Parse the latest backup row
+  ansible.builtin.set_fact:
+    backup_validation_fields: "{{ (backup_validation_sql_result.stdout_lines | first | trim).split('|') }}"
+    backup_validation_time: "{{ ((backup_validation_sql_result.stdout_lines | first | trim).split('|')[0] | trim) }}"
+    backup_validation_age_hours: "{{ ((backup_validation_sql_result.stdout_lines | first | trim).split('|')[1] | trim | float) }}"
+    backup_validation_status: "{{ ((backup_validation_sql_result.stdout_lines | first | trim).split('|')[2] | trim | upper) }}"
+
+- name: Validate backup row structure and values
+  ansible.builtin.assert:
+    that:
+      - backup_validation_fields | length >= 3
+      - backup_validation_age_hours is number
+      - backup_validation_status is defined
+    fail_msg: "The backup SQL did not return the expected columns. Expected: latest_backup_time | backup_age_hours | backup_status"
+
+- name: Stop progression if latest valid backup is missing or stale
+  ansible.builtin.fail:
+    msg: >-
+      Required latest successful backup is unavailable or older than {{ backup_threshold_hours }} hours.
+      Last backup: {{ backup_validation_time }} | Age: {{ backup_validation_age_hours }} hours | Status: {{ backup_validation_status }}
+  when:
+    - backup_validation_status not in backup_success_status_values
+      or backup_validation_age_hours | float > (backup_threshold_hours | float)
+
+- name: Display valid backup status
+  ansible.builtin.debug:
+    msg: >-
+      Latest successful backup is available.
+      Last backup: {{ backup_validation_time }} | Age: {{ backup_validation_age_hours }} hours | Status: {{ backup_validation_status }}
