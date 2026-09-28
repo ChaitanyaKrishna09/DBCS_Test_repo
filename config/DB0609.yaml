@@ -31,7 +31,7 @@ db_user: "oracle"
 
 group1: "DBCS"
 region1: ""
-patch_discovery_report_dir: "D:/Projects/Automation/DBCS_Test_repo"
+patch_discovery_report_dir: "{{ playbook_dir }}"
 
 db_home_id: "REPLACE_WITH_DB_HOME_OCID"
 patch_id: "REPLACE_WITH_PATCH_OCID"
