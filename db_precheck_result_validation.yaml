@@ -7,7 +7,7 @@
     - oracle.oci
 
   vars:
-    target: "{{ group1 | default('') }}"
+    target: "{{ group1 | default('DBCS') }}"
     target_region: "{{ region1 | default('us-ashburn-1') }}"
     target_patch_id: "{{ patch_id | default('') }}"
     target_patch_version: "{{ patch_version | default('') }}"
