@@ -1,6 +1,6 @@
 ---
 - name: Capture and persist approved DBCS patch selection
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
 
   vars_files:
