@@ -1,6 +1,6 @@
 ---
 - name: Discover OCI DBCS patches for DBA review
-  hosts: DBCS
+  hosts: localhost
   gather_facts: false
   connection: local
 
