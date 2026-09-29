@@ -70,18 +70,43 @@
               {{ current_date }}
             subtype: html
             body: |
-              <html><body>
-              <h3>OCI DBCS Patch Discovery Completed</h3>
-              <p>Instance: {{ instance }}</p>
-              <p>Target group: {{ patch_discovery_target_group }}</p>
-              <p>Region: {{ patch_discovery_region | default('N/A', true) }}</p>
-              <p>DB Homes discovered: {{ patch_discovery_catalog | length }}</p>
-              <p>Patch candidates: {{ patch_discovery_catalog
-                | map(attribute='available_patches')
-                | map('length') | sum }}</p>
-              <p>HTML report: {{ patch_discovery_html_report }}</p>
-              <p>JSON report: {{ patch_discovery_json_report }}</p>
-              </body></html>
+             <html>
+<body style="font-family: Arial, sans-serif;">
+  <h3 style="color: #1F4E79;">OCI DBCS Patch Discovery Completed</h3>
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; border-color: #BFBFBF; font-size: 14px;">
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">Instance</th>
+      <td style="background-color: #F5F9FC;">{{ instance }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">Target group</th>
+      <td>{{ patch_discovery_target_group }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">Region</th>
+      <td style="background-color: #F5F9FC;">{{ patch_discovery_region | default('N/A', true) }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">DB Homes discovered</th>
+      <td>{{ patch_discovery_catalog | length }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">Patch candidates</th>
+      <td style="background-color: #F5F9FC;">{{ patch_discovery_catalog
+        | map(attribute='available_patches')
+        | map('length') | sum }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">HTML report</th>
+      <td>{{ patch_discovery_html_report }}</td>
+    </tr>
+    <tr>
+      <th align="left" style="background-color: #1F4E79; color: #FFFFFF;">JSON report</th>
+      <td style="background-color: #F5F9FC;">{{ patch_discovery_json_report }}</td>
+    </tr>
+  </table>
+</body>
+</html>
             attach:
               - "{{ patch_discovery_html_report }}"
               - "{{ patch_discovery_json_report }}"
