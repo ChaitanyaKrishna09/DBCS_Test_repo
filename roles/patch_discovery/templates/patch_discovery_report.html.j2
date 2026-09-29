@@ -12,8 +12,6 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     th { background: #e8e8e8; }
     .empty { color: #666; font-style: italic; }
-    .review { color: #9b5c00; font-weight: bold; }
-    .current { color: #247a2c; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -66,7 +64,6 @@
         <th>Patch OCID</th>
         <th>Description</th>
         <th>Available actions</th>
-        <th>Review classification</th>
         <th>Latest PRECHECK</th>
         <th>Latest APPLY</th>
       </tr>
@@ -89,13 +86,6 @@
         <td>{{ patch.id }}</td>
         <td>{{ patch.description | default('N/A') }}</td>
         <td>{{ patch.available_actions | default([]) | join(', ') }}</td>
-        <td>
-          {% if patch.version | default('') == entry.db_home.db_version | default('') %}
-            <span class="current">CURRENT_VERSION</span>
-          {% else %}
-            <span class="review">REVIEW_REQUIRED</span>
-          {% endif %}
-        </td>
         <td>
           {% if precheck_history | length > 0 %}
             {{ (precheck_history | last).lifecycle_state | default('UNKNOWN') }}
