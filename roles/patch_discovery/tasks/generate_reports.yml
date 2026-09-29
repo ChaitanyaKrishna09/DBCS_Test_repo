@@ -47,28 +47,6 @@
     dest: "{{ patch_discovery_html_report }}"
     mode: "0640"
 
-- name: Validate patch discovery email configuration
-  ansible.builtin.assert:
-    that:
-      - smtp_server | default('') | length > 0
-      - smtp_port | default(0) | int > 0
-      - email_sender | default('') | length > 0
-      - email_recipients | default([]) | length > 0
-    fail_msg: >-
-      Configure smtp_server, smtp_port, email_sender, and
-      email_recipients in config/{{ instance }}.yaml before running
-      patch discovery email delivery.
-
-- name: Email DBA patch discovery report
-  community.general.mail:
-    host: "{{ smtp_server }}"
-    port: "{{ smtp_port | int }}"
-    from: "{{ email_sender }}"
-    to: "{{ email_recipients }}"
-    subject: "Database Available Patches - {{ patch_discovery_timestamp }}"
-    subtype: html
-    body: "{{ lookup('file', patch_discovery_html_report) }}"
-
 - name: Publish patch discovery workflow statistics
   ansible.builtin.set_stats:
     data:

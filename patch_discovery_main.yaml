@@ -16,7 +16,102 @@
     patch_discovery_region: "{{ region1 | default('') }}"
 
   tasks:
-    - name: Run patch discovery once for the inventory group
-      ansible.builtin.include_role:
-        name: patch_discovery
+    - name: Run patch discovery and notify by email
       run_once: true
+      block:
+        - name: Run patch discovery once for the inventory group
+          ansible.builtin.include_role:
+            name: patch_discovery
+
+        - name: Print discovered patch details
+          ansible.builtin.debug:
+            msg:
+              - >-
+                DB Home: {{ item.0.db_home.display_name
+                | default(item.0.db_home.id) }}
+              - "Region: {{ item.0.region }}"
+              - "Patch version: {{ item.1.version | default('N/A') }}"
+              - "Patch OCID: {{ item.1.id }}"
+              - >-
+                Description: {{ item.1.description | default('N/A') }}
+              - >-
+                Available actions: {{ item.1.available_actions
+                | default([]) | join(', ') }}
+          loop: >-
+            {{ patch_discovery_catalog
+            | subelements('available_patches', skip_missing=True) }}
+          loop_control:
+            label: "{{ item.1.version | default(item.1.id) }}"
+          when: >-
+            patch_discovery_catalog
+            | map(attribute='available_patches')
+            | map('length')
+            | sum > 0
+
+        - name: Report when no patch candidates were discovered
+          ansible.builtin.debug:
+            msg: >-
+              Discovery completed for {{ patch_discovery_target_group }};
+              no applicable patch candidates were returned.
+          when: >-
+            patch_discovery_catalog
+            | map(attribute='available_patches')
+            | map('length')
+            | sum == 0
+
+        - name: Send patch discovery success email
+          community.general.mail:
+            host: "{{ smtp_server }}"
+            port: "{{ smtp_port | int }}"
+            from: "{{ email_sender }}"
+            to: "{{ email_recipients }}"
+            subject: >-
+              OCI DBCS Patch Discovery - {{ patch_discovery_target_group }} -
+              {{ current_date }}
+            subtype: html
+            body: |
+              <html><body>
+              <h3>OCI DBCS Patch Discovery Completed</h3>
+              <p>Instance: {{ instance }}</p>
+              <p>Target group: {{ patch_discovery_target_group }}</p>
+              <p>Region: {{ patch_discovery_region | default('N/A', true) }}</p>
+              <p>DB Homes discovered: {{ patch_discovery_catalog | length }}</p>
+              <p>Patch candidates: {{ patch_discovery_catalog
+                | map(attribute='available_patches')
+                | map('length') | sum }}</p>
+              <p>HTML report: {{ patch_discovery_html_report }}</p>
+              <p>JSON report: {{ patch_discovery_json_report }}</p>
+              </body></html>
+            attach:
+              - "{{ patch_discovery_html_report }}"
+              - "{{ patch_discovery_json_report }}"
+          delegate_to: localhost
+
+      rescue:
+        - name: Send patch discovery failure email
+          community.general.mail:
+            host: "{{ smtp_server }}"
+            port: "{{ smtp_port | int }}"
+            from: "{{ email_sender }}"
+            to: "{{ email_recipients }}"
+            subject: >-
+              FAILED: OCI DBCS Patch Discovery -
+              {{ patch_discovery_target_group }} - {{ current_date }}
+            subtype: html
+            body: |
+              <html><body>
+              <h3>OCI DBCS Patch Discovery FAILED</h3>
+              <p>Instance: {{ instance }}</p>
+              <p>Target group: {{ patch_discovery_target_group }}</p>
+              <p>Error: {{ ansible_failed_result.msg
+                | default('See job log for details') }}</p>
+              </body></html>
+          delegate_to: localhost
+          ignore_errors: true
+
+        - name: Fail after handling patch discovery error
+          ansible.builtin.fail:
+            msg: >-
+              Patch discovery or success notification failed. Check the job
+              log; failure notification was attempted for
+              {{ email_recipients | join(', ') }}.
