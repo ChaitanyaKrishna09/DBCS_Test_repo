@@ -1,0 +1,140 @@
+---
+- name: Get DBCS GI Available Patches
+  hosts: localhost
+  gather_facts: true
+
+  collections:
+    - oracle.oci
+    - community.general
+
+  vars_files:
+    - "config/{{ instance }}.yaml"
+
+  vars:
+    target: "{{ group1 }}"
+    target_region: "{{ region1 }}"
+    report_file: "{{ local_log_file_path }}/gi_patch_report.html"
+
+  tasks:
+
+    #################################################################
+    # Prepare Target DB Systems
+    #################################################################
+
+    - name: Ensure target is a list of hosts
+      ansible.builtin.set_fact:
+        target_list: "{{ groups[target] if target in groups else [target] }}"
+
+    - name: Debug target list
+      ansible.builtin.debug:
+        var: target_list
+
+
+    #################################################################
+    # Fetch GI Available Patches
+    #################################################################
+
+    - name: Fetch GI available patches
+      oracle.oci.oci_database_db_system_patch_facts:
+        db_system_id: "{{ hostvars[item].db_system_id }}"
+        region: "{{ hostvars[item].region | default(target_region) }}"
+      loop: "{{ target_list }}"
+      register: gi_updates
+
+
+    #################################################################
+    # Display GI Available Patches
+    #################################################################
+
+    - name: Display GI available patches
+      ansible.builtin.debug:
+        msg:
+          - "DB System: {{ item.item }}"
+          - "Update Description: {{ item.db_system_patches[0].description | default('N/A') }}"
+          - "Version: {{ item.db_system_patches[0].version | default('N/A') }}"
+          - "Last Action: {{ item.db_system_patches[0].last_action | default('N/A', true) }}"
+          - "Release Date: {{ item.db_system_patches[0].time_released | default('N/A') }}"
+      loop: "{{ gi_updates.results }}"
+      when:
+        - item.db_system_patches is defined
+        - item.db_system_patches | length > 0
+
+
+    #################################################################
+    # Validate DBA Selected GI Patch
+    #################################################################
+
+    - name: Check if configured GI patch is available
+      ansible.builtin.set_fact:
+        grid_patch_available: >-
+          {{
+            gi_updates.results
+            | selectattr('db_system_patches', 'defined')
+            | map(attribute='db_system_patches')
+            | flatten
+            | selectattr('version', 'equalto', grid_patch_version)
+            | list
+            | length > 0
+          }}
+
+    - name: Display GI patch availability
+      ansible.builtin.debug:
+        msg:
+          - "Configured GI patch version: {{ grid_patch_version }}"
+          - "GI patch available in OCI: {{ grid_patch_available }}"
+
+
+    #################################################################
+    # Create Report Directory
+    #################################################################
+
+    - name: Create report directory
+      ansible.builtin.file:
+        path: "{{ local_log_file_path }}"
+        state: directory
+        mode: "0755"
+
+
+    #################################################################
+    # Generate HTML Report
+    #################################################################
+
+    - name: Generate GI patch HTML report
+      ansible.builtin.template:
+        src: templates/gi_patch_report.html.j2
+        dest: "{{ report_file }}"
+
+
+    #################################################################
+    # Send Email
+    #################################################################
+
+    - name: Send GI patch email report
+      community.general.mail:
+        host: "{{ smtp_server }}"
+        port: "{{ smtp_port }}"
+        from: "{{ email_sender }}"
+        to: "{{ email_recipients }}"
+        subject: "GI Available Patches"
+        subtype: html
+        body: "{{ lookup('file', report_file) }}"
+
+
+    #################################################################
+    # Stop if DBA Selected GI Patch is Not Available
+    #################################################################
+
+    - name: Stop if configured GI patch is not available
+      ansible.builtin.fail:
+        msg: >-
+          Configured GI patch version {{ grid_patch_version }}
+          is not available in OCI for the target DB System.
+          GI precheck cannot proceed.
+      when: not grid_patch_available
+
+    - name: GI patch validation successful
+      ansible.builtin.debug:
+        msg: >-
+          Configured GI patch version {{ grid_patch_version }}
+          is available in OCI. Proceeding with GI precheck.
+      when: grid_patch_available
