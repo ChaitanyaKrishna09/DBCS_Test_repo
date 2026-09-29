@@ -14,6 +14,7 @@
     target: "{{ group1 }}"
     target_region: "{{ region1 }}"
     report_file: "{{ local_log_file_path }}/db_patch_report.html"
+    discovery_report_dir: "{{ patch_discovery_report_dir | default(playbook_dir) }}"
 
   tasks:
 
@@ -115,6 +116,48 @@
         msg:
           - "Configured DB patch version: {{ db_patch_version }}"
           - "DB patch available in OCI: {{ db_patch_available }}"
+
+    - name: Find generated patch discovery HTML report
+      ansible.builtin.find:
+        paths: "{{ discovery_report_dir }}"
+        patterns: "dbcs_patch_discovery_*.html"
+        file_type: file
+      register: patch_discovery_html_files
+
+    - name: Select latest patch discovery HTML report
+      ansible.builtin.set_fact:
+        latest_patch_discovery_html: >-
+          {{ (patch_discovery_html_files.files | sort(attribute='mtime') | last).path
+             if patch_discovery_html_files.files | length > 0 else '' }}
+
+    - name: Require a generated patch discovery report
+      ansible.builtin.assert:
+        that:
+          - latest_patch_discovery_html | length > 0
+        fail_msg: >-
+          No generated patch discovery HTML report was found in
+          {{ discovery_report_dir }}. Run patch_discovery_main.yaml first
+          and configure patch_discovery_report_dir to a location shared
+          between the discovery and fetch jobs.
+
+    - name: Send patch fetch email with discovery report attached
+      community.general.mail:
+        host: "{{ smtp_server }}"
+        port: "{{ smtp_port | int }}"
+        from: "{{ email_sender }}"
+        to: "{{ email_recipients }}"
+        subject: "Database Available Patches - {{ current_date }}"
+        subtype: html
+        body: |
+          <html><body>
+          <h3>Database Patch Fetch Completed</h3>
+          <p>Target group: {{ target }}</p>
+          <p>Configured DB patch version: {{ db_patch_version }}</p>
+          <p>Configured DB patch available in OCI: {{ db_patch_available }}</p>
+          <p>Patch discovery report is attached.</p>
+          </body></html>
+        attach:
+          - "{{ latest_patch_discovery_html }}"
 
     # #################################################################
     # # Create Report Directory
