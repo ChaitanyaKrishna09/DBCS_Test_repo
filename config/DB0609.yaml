@@ -65,6 +65,7 @@ smtp_port: "25"
 email_sender: "oracle@cenoiadolam01.ad.centroid.com"
 email_recipients:
   - "pavan.maccha@centroid.com"
+  - "naidu.chaitanya@centroid.com"
   # - madhuravani.peddi@centroid.com
 
 sendmail_path: "/usr/sbin/sendmail"
