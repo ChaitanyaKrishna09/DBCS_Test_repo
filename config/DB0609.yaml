@@ -35,9 +35,10 @@ db_patch_version: "23.26.3.0.0"
 smtp_server: "centroid-com.mail.protection.outlook.com"
 smtp_port: "25"
 email_recipients:
-   - madhuravani.peddi@centroid.com
+  # - madhuravani.peddi@centroid.com
   # - Lakshmi.Sunanda@centroid.com
   # - vamshi.thandu@centroid.com
+   - madhuravani.peddi@centroid.com
    - pavan.maccha@centroid.com
    - naidu.chaitanya@centroid.com
 email_sender: "oracle@cenoiadolam01.ad.centroid.com"
