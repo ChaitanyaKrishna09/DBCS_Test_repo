@@ -1,3 +1,4 @@
+
 ---
 - name: Get DBCS Database Available Patches
   hosts: localhost
@@ -14,203 +15,218 @@
     target: "{{ group1 }}"
     target_region: "{{ region1 }}"
     report_file: "{{ local_log_file_path }}/db_patch_report.html"
-    discovery_report_dir: "{{ patch_discovery_report_dir | default(playbook_dir) }}"
 
   tasks:
 
-    #################################################################
-    # Prepare Target DB Systems
-    #################################################################
-
-    - name: Ensure target is a list of hosts
+    # --------------------------------------------------
+    # 1. Resolve target DB Systems
+    # --------------------------------------------------
+    - name: Ensure target is a list of DB Systems
       ansible.builtin.set_fact:
         target_list: "{{ groups[target] if target in groups else [target] }}"
 
-    - name: Debug target list
+    - name: Display target DB Systems
       ansible.builtin.debug:
         var: target_list
 
-    #################################################################
-    # Fetch DB Home Details
-    #################################################################
-
+    # --------------------------------------------------
+    # 2. Discover DB Homes for all DB Systems
+    # --------------------------------------------------
     - name: Fetch DB Home details
       oracle.oci.oci_database_db_home_facts:
         compartment_id: "{{ hostvars[item].compartment_id }}"
         db_system_id: "{{ hostvars[item].db_system_id }}"
         region: "{{ hostvars[item].region | default(target_region) }}"
       loop: "{{ target_list }}"
+      loop_control:
+        label: "{{ item }}"
       register: db_home_details
 
-    #################################################################
-    # Fetch Database Available Patches
-    #################################################################
+    # --------------------------------------------------
+    # 3. Build a flat list of ALL DB Homes
+    # --------------------------------------------------
+    - name: Initialize DB Home list
+      ansible.builtin.set_fact:
+        all_db_homes: []
 
-    - name: Fetch Database available patches
-      oracle.oci.oci_database_db_home_patch_facts:
-        db_home_id: "{{ item.db_homes[0].id }}"
-        region: "{{ hostvars[item.item].region | default(target_region) }}"
-      loop: "{{ db_home_details.results }}"
-      register: db_updates
-      when:
-        - item.db_homes is defined
-        - item.db_homes | length > 0
+    - name: Build list of all discovered DB Homes
+      ansible.builtin.set_fact:
+        all_db_homes: >-
+          {{
+            all_db_homes + [
+              {
+                'db_system': item.0.item,
+                'db_system_id': hostvars[item.0.item].db_system_id,
+                'region': hostvars[item.0.item].region | default(target_region),
+                'db_home': item.1
+              }
+            ]
+          }}
+      loop: "{{ db_home_details.results | subelements('db_homes', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.item }} - {{ item.1.display_name | default(item.1.id) }}"
 
-    # 4. NEW - Fetch patch history
-    - name: Fetch Database patch history
-      oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "{{ item.db_homes[0].id }}"
-        region: "{{ hostvars[item.item].region | default(target_region) }}"
-      loop: "{{ db_home_details.results }}"
-      register: db_patch_history
-      when:
-        - item.db_homes is defined
-        - item.db_homes | length > 0
-  
-    # 5. Display patch history 
-    - name: Display Database patch history
-      ansible.builtin.debug:
-        var: item
-      loop: "{{ db_patch_history.results }}"
-      when:
-        - not (item.skipped | default(false))
-        - not (item.failed | default(false))
-
-    #################################################################
-    # Display Database Available Patches
-    #################################################################
-
-    - name: Display Database available patches
+    - name: Display discovered DB Homes
       ansible.builtin.debug:
         msg:
-          - "DB System: {{ item.item.item }}"
-          - "DB Home: {{ item.item.db_homes[0].display_name | default('N/A') }}"
-          - "Update Description: {{ item.db_home_patches[0].description | default('N/A') }}"
-          - "Version: {{ item.db_home_patches[0].version | default('N/A') }}"
-          - "Last Action: {{ item.db_home_patches[0].last_action | default('N/A', true) }}"
-          - "Release Date: {{ item.db_home_patches[0].time_released | default('N/A') }}"
-      loop: "{{ db_updates.results }}"
-      when:
-        - item.db_home_patches is defined
-        - item.db_home_patches | length > 0
+          - "DB System: {{ item.db_system }}"
+          - "DB System OCID: {{ item.db_system_id }}"
+          - "Region: {{ item.region }}"
+          - "DB Home: {{ item.db_home.display_name | default('N/A') }}"
+          - "DB Home OCID: {{ item.db_home.id }}"
+          - "Current DB Version: {{ item.db_home.db_version | default('N/A') }}"
+          - "Lifecycle State: {{ item.db_home.lifecycle_state | default('N/A') }}"
+      loop: "{{ all_db_homes }}"
+      loop_control:
+        label: "{{ item.db_system }} - {{ item.db_home.display_name | default(item.db_home.id) }}"
 
-    #################################################################
-    # Check Configured DB Patch Version
-    #################################################################
+    # --------------------------------------------------
+    # 4. Fetch available patches for EVERY DB Home
+    # --------------------------------------------------
+    - name: Fetch database available patches for all DB Homes
+      oracle.oci.oci_database_db_home_patch_facts:
+        db_home_id: "{{ item.db_home.id }}"
+        region: "{{ item.region }}"
+      loop: "{{ all_db_homes }}"
+      loop_control:
+        label: "{{ item.db_system }} - {{ item.db_home.display_name | default(item.db_home.id) }}"
+      register: db_updates
 
-    - name: Check if configured DB patch is available
+    # --------------------------------------------------
+    # 5. Fetch patch history for EVERY DB Home
+    # --------------------------------------------------
+    - name: Fetch database patch history for all DB Homes
+      oracle.oci.oci_database_db_home_patch_history_entry_facts:
+        db_home_id: "{{ item.db_home.id }}"
+        region: "{{ item.region }}"
+      loop: "{{ all_db_homes }}"
+      loop_control:
+        label: "{{ item.db_system }} - {{ item.db_home.display_name | default(item.db_home.id) }}"
+      register: db_patch_history
+
+    # --------------------------------------------------
+    # 6. Display ALL available patches
+    # --------------------------------------------------
+    - name: Display all database available patches
+      ansible.builtin.debug:
+        msg:
+          - "DB System: {{ item.0.item.db_system }}"
+          - "DB Home: {{ item.0.item.db_home.display_name | default('N/A') }}"
+          - "DB Home OCID: {{ item.0.item.db_home.id }}"
+          - "Patch Version: {{ item.1.version | default('N/A') }}"
+          - "Patch OCID: {{ item.1.id | default('N/A') }}"
+          - "Description: {{ item.1.description | default('N/A') }}"
+          - "Available Actions: {{ item.1.available_actions | default([]) | join(', ') }}"
+          - "Last Action: {{ item.1.last_action | default('N/A', true) }}"
+          - "Release Date: {{ item.1.time_released | default('N/A') }}"
+      loop: "{{ db_updates.results | subelements('db_home_patches', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.item.db_system }} - {{ item.1.version | default('N/A') }}"
+
+    # --------------------------------------------------
+    # 7. Display ALL patch history entries
+    # --------------------------------------------------
+    - name: Display all database patch history
+      ansible.builtin.debug:
+        msg:
+          - "DB System: {{ item.0.item.db_system }}"
+          - "DB Home: {{ item.0.item.db_home.display_name | default('N/A') }}"
+          - "Patch OCID: {{ item.1.patch_id | default('N/A') }}"
+          - "Action: {{ item.1.action | default('N/A') }}"
+          - "State: {{ item.1.lifecycle_state | default('N/A') }}"
+          - "Started: {{ item.1.time_started | default('N/A') }}"
+          - "Ended: {{ item.1.time_ended | default('N/A') }}"
+          - "Details: {{ item.1.lifecycle_details | default('N/A', true) }}"
+      loop: "{{ db_patch_history.results | subelements('db_home_patch_history_entries', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.item.db_system }} - {{ item.1.action | default('N/A') }}"
+
+    # --------------------------------------------------
+    # 8. Validate configured DB patch version
+    # --------------------------------------------------
+    - name: Check whether configured DB patch is available
       ansible.builtin.set_fact:
         db_patch_available: >-
           {{
-            db_updates.results
-            | selectattr('db_home_patches', 'defined')
-            | map(attribute='db_home_patches')
-            | flatten
-            | selectattr('version', 'equalto', db_patch_version)
-            | list
-            | length > 0
+            (
+              db_updates.results
+              | selectattr('db_home_patches', 'defined')
+              | map(attribute='db_home_patches')
+              | flatten
+              | selectattr('version', 'defined')
+              | selectattr('version', 'equalto', db_patch_version)
+              | list
+              | length
+            ) > 0
           }}
 
-    - name: Display DB patch availability
+    - name: Display configured DB patch availability
       ansible.builtin.debug:
         msg:
           - "Configured DB patch version: {{ db_patch_version }}"
-          - "DB patch available in OCI: {{ db_patch_available }}"
+          - "Available in at least one DB Home: {{ db_patch_available }}"
+          - "Total DB Systems: {{ target_list | length }}"
+          - "Total DB Homes: {{ all_db_homes | length }}"
+          - >-
+            Total patch candidates:
+            {{
+              db_updates.results
+              | selectattr('db_home_patches', 'defined')
+              | map(attribute='db_home_patches')
+              | flatten
+              | length
+            }}
 
-    - name: Find generated patch discovery HTML report
-      ansible.builtin.find:
-        paths: "{{ discovery_report_dir }}"
-        patterns: "dbcs_patch_discovery_*.html"
-        file_type: file
-      register: patch_discovery_html_files
+    # --------------------------------------------------
+    # 9. Create report directory
+    # --------------------------------------------------
+    - name: Create report directory
+      ansible.builtin.file:
+        path: "{{ local_log_file_path }}"
+        state: directory
+        mode: "0755"
 
-    - name: Select latest patch discovery HTML report
-      ansible.builtin.set_fact:
-        latest_patch_discovery_html: >-
-          {{ (patch_discovery_html_files.files | sort(attribute='mtime') | last).path
-             if patch_discovery_html_files.files | length > 0 else '' }}
+    # --------------------------------------------------
+    # 10. Generate HTML report
+    # --------------------------------------------------
+    - name: Generate Database patch HTML report
+      ansible.builtin.template:
+        src: templates/db_patch_report.html.j2
+        dest: "{{ report_file }}"
+        mode: "0644"
 
-    - name: Require a generated patch discovery report
-      ansible.builtin.assert:
-        that:
-          - latest_patch_discovery_html | length > 0
-        fail_msg: >-
-          No generated patch discovery HTML report was found in
-          {{ discovery_report_dir }}. Run patch_discovery_main.yaml first
-          and configure patch_discovery_report_dir to a location shared
-          between the discovery and fetch jobs.
+    - name: Display generated report path
+      ansible.builtin.debug:
+        msg: "HTML report generated at {{ report_file }}"
 
-    - name: Send patch fetch email with discovery report attached
+    # --------------------------------------------------
+    # 11. Send HTML report by email
+    # --------------------------------------------------
+    - name: Send Database patch email report
       community.general.mail:
         host: "{{ smtp_server }}"
-        port: "{{ smtp_port | int }}"
+        port: "{{ smtp_port }}"
         from: "{{ email_sender }}"
         to: "{{ email_recipients }}"
-        subject: "Database Available Patches - {{ current_date }}"
+        subject: "DBCS DB Available Patches & Patch History"
         subtype: html
-        body: |
-          <html><body>
-          <h3>Database Patch Fetch Completed</h3>
-          <p>Target group: {{ target }}</p>
-          <p>Configured DB patch version: {{ db_patch_version }}</p>
-          <p>Configured DB patch available in OCI: {{ db_patch_available }}</p>
-          <p>Patch discovery report is attached.</p>
-          </body></html>
-        attach:
-          - "{{ latest_patch_discovery_html }}"
+        body: "{{ lookup('ansible.builtin.file', report_file) }}"
 
-    # #################################################################
-    # # Create Report Directory
-    # #################################################################
+    # --------------------------------------------------
+    # 12. Stop if configured patch is unavailable
+    # --------------------------------------------------
+    - name: Stop if configured DB patch is not available
+      ansible.builtin.fail:
+        msg: >-
+          Configured DB patch version {{ db_patch_version }}
+          was not found in the available patches returned for
+          any discovered DB Home. DB precheck cannot proceed.
+      when: not (db_patch_available | bool)
 
-    # - name: Create report directory
-    #   ansible.builtin.file:
-    #     path: "{{ local_log_file_path }}"
-    #     state: directory
-    #     mode: "0755"
-
-    # #################################################################
-    # # Generate HTML Report
-    # #################################################################
-
-    # - name: Generate Database patch HTML report
-    #   ansible.builtin.template:
-    #     src: templates/db_patch_report.html.j2
-    #     dest: "{{ report_file }}"
-
-    # #################################################################
-    # # Send Email
-    # #################################################################
-
-    # - name: Send Database patch email report
-    #   community.general.mail:
-    #     host: "{{ smtp_server }}"
-    #     port: "{{ smtp_port }}"
-    #     from: "{{ email_sender }}"
-    #     to: "{{ email_recipients }}"
-    #     subject: "Database Available Patches"
-    #     subtype: html
-    #     body: "{{ lookup('file', report_file) }}"
-
-    # #################################################################
-    # # Stop If Configured DB Patch Is Not Available
-    # #################################################################
-
-    # - name: Stop if configured DB patch is not available
-    #   ansible.builtin.fail:
-    #     msg: >-
-    #       Configured DB patch version {{ db_patch_version }}
-    #       is not available in OCI for the target DB System.
-    #       DB precheck cannot proceed.
-    #   when: not db_patch_available
-
-    # #################################################################
-    # # DB Patch Validation Successful
-    # #################################################################
-
-    # - name: DB patch validation successful
-    #   ansible.builtin.debug:
-    #     msg: >-
-    #       Configured DB patch version {{ db_patch_version }}
-    #       is available in OCI. Proceeding with DB precheck.
-    #   when: db_patch_available
+    - name: DB patch validation successful
+      ansible.builtin.debug:
+        msg: >-
+          Configured DB patch version {{ db_patch_version }}
+          is available in at least one discovered DB Home.
+          Proceeding with DB precheck.
+      when: db_patch_available | bool
