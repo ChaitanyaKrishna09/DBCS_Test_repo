@@ -51,4 +51,4 @@ notification:
   smtp_secure: ""
   from_email: ""
   to_emails:
-    - "madhuravani.peddi@centroid.com"
+   # - "madhuravani.peddi@centroid.com"
