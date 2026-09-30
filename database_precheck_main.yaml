@@ -5,12 +5,17 @@
 
   collections:
     - oracle.oci
+    - community.general
+
+  vars_files:
+    - "config/{{ instance }}.yaml"
 
   vars:
     target: "{{ group1 }}"
     target_region: "{{ region1 }}"
     target_patch_version: "23.26.3.0.0"
     target_patch_id: ""
+    precheck_report_file: "{{ playbook_dir }}/reports/db_precheck_{{ target_patch_version }}_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.html"
 
   tasks:
 
@@ -94,6 +99,7 @@
         region: "{{ hostvars[item.item.item].region | default(target_region) }}"
       loop: "{{ database_details.results }}"
       register: db_home_precheck_result
+      ignore_errors: true
       when:
         - item.databases is defined
         - item.databases | length > 0
@@ -157,6 +163,29 @@
           - "PRECHECK Ended: {{ latest_precheck.time_ended }}"
       when:
         - latest_precheck is defined
+
+    - name: Create precheck report directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/reports"
+        state: directory
+        mode: "0755"
+
+    - name: Generate DB PRECHECK HTML report
+      ansible.builtin.template:
+        src: templates/database_precheck_report.html.j2
+        dest: "{{ precheck_report_file }}"
+
+    - name: Email DB PRECHECK report
+      community.general.mail:
+        host: "{{ smtp_server }}"
+        port: "{{ smtp_port | int }}"
+        from: "{{ email_sender }}"
+        to: "{{ email_recipients }}"
+        subject: "DB PRECHECK Report - {{ target_patch_version }}"
+        subtype: html
+        body: "{{ lookup('file', precheck_report_file) }}"
+        attach:
+          - "{{ precheck_report_file }}"
 
     - name: Validate DB Home PRECHECK
       ansible.builtin.assert:
