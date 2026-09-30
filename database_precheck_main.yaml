@@ -1,6 +1,6 @@
 ---
 - name: PRECHECK every available patch on every DB Home
-  hosts: DBCS
+  hosts: localhost
   gather_facts: false
 
   collections:
@@ -27,8 +27,6 @@
         compartment_id: "{{ hostvars[item].compartment_id }}"
         db_system_id: "{{ hostvars[item].db_system_id }}"
         region: "{{ hostvars[item].region | default(target_region, true) }}"
-        config_file_location: "{{ oci_config_file | default(omit) }}"
-        config_profile_name: "{{ oci_config_profile | default(omit) }}"
       loop: "{{ target_hosts }}"
       loop_control:
         label: "{{ item }}"
@@ -59,8 +57,6 @@
       oracle.oci.oci_database_db_home_patch_facts:
         db_home_id: "{{ item.db_home_id }}"
         region: "{{ item.region }}"
-        config_file_location: "{{ oci_config_file | default(omit) }}"
-        config_profile_name: "{{ oci_config_profile | default(omit) }}"
       loop: "{{ unique_db_home_targets }}"
       loop_control:
         label: "{{ item.db_home_id }}"
@@ -110,8 +106,6 @@
         region: "{{ item.region }}"
         wait: true
         wait_timeout: "{{ precheck_wait_timeout }}"
-        config_file_location: "{{ oci_config_file | default(omit) }}"
-        config_profile_name: "{{ oci_config_profile | default(omit) }}"
       loop: "{{ precheck_targets }}"
       loop_control:
         label: "{{ item.db_home_id }} / {{ item.patch_version }} / {{ item.patch_id }}"
@@ -127,8 +121,6 @@
         region: "{{ item.region }}"
         sort_by: TIMESTARTED
         sort_order: DESC
-        config_file_location: "{{ oci_config_file | default(omit) }}"
-        config_profile_name: "{{ oci_config_profile | default(omit) }}"
       loop: "{{ unique_db_home_targets }}"
       loop_control:
         label: "{{ item.db_home_id }}"
