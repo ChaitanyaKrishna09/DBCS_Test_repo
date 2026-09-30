@@ -109,15 +109,15 @@
     #     - item.databases is defined
     #     - item.databases | length > 0
     
-    - name: Find PRECHECK entries for target patch
-      ansible.builtin.set_fact:
-        precheck_entries: >-
-          {{
-            db_home_patch_history.db_home_patch_history_entries
-            | selectattr('patch_id', 'equalto', target_patch_id)
-            | selectattr('action', 'equalto', 'PRECHECK')
-            | list
-          }}
+    # - name: Find PRECHECK entries for target patch
+      # ansible.builtin.set_fact:
+        # precheck_entries: >-
+          # {{
+            # db_home_patch_history.db_home_patch_history_entries
+            # | selectattr('patch_id', 'equalto', target_patch_id)
+            # | selectattr('action', 'equalto', 'PRECHECK')
+            # | list
+          # }}
 
     - name: Find latest PRECHECK result
       ansible.builtin.set_fact:
