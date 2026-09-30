@@ -61,7 +61,8 @@
       oracle.oci.oci_database_database_facts:
         compartment_id: "{{ hostvars[item.item].compartment_id }}"
         db_home_id: "{{ item.db_homes[0].id }}"
-        region: "{{ hostvars[item.item].region | default(target_region) }}"
+        region: >-
+          {{ hostvars[item.item].region | default(target_region) }}
       loop: "{{ db_home_details.results }}"
       register: database_details
       when:

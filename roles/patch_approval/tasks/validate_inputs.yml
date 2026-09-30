@@ -5,28 +5,64 @@
       - patch_approval_db_home_id | default('') | length > 0
       - patch_approval_patch_id | default('') | length > 0
       - patch_approval_patch_version | default('') | length > 0
-      - patch_approval_discovery_report | default('') | length > 0
+      - patch_approval_region | default('') | length > 0
       - patch_approval_approver | default('') | length > 0
       - patch_approval_change_ticket | default('') | length > 0
       - patch_approval_decision in ['APPROVED', 'REJECTED']
     fail_msg: >-
       patch_approval_db_home_id, patch_approval_patch_id,
-      patch_approval_patch_version, patch_approval_discovery_report,
+      patch_approval_patch_version, patch_approval_region,
       patch_approval_approver, patch_approval_change_ticket and a valid
       patch_approval_decision (APPROVED or REJECTED) are required.
 
-- name: Check discovery report file exists
-  ansible.builtin.stat:
-    path: "{{ patch_approval_discovery_report }}"
-  register: patch_approval_discovery_report_stat
+- name: Fetch DB Home details from OCI
+  oracle.oci.oci_database_db_home_facts:
+    db_home_id: "{{ patch_approval_db_home_id }}"
+    region: "{{ patch_approval_region }}"
+  register: patch_approval_db_home_result
 
-- name: Fail when discovery report file is missing
+- name: Require the approved DB Home to exist
   ansible.builtin.assert:
     that:
-      - patch_approval_discovery_report_stat.stat.exists
+      - patch_approval_db_home_result.db_homes | default([]) | length > 0
     fail_msg: >-
-      Discovery report {{ patch_approval_discovery_report }} was not
-      found. Run patch_discovery_main.yaml before requesting approval.
+      DB Home {{ patch_approval_db_home_id }} was not found in OCI
+      region {{ patch_approval_region }}.
+
+- name: Set the live DB Home details
+  ansible.builtin.set_fact:
+    patch_approval_db_home: "{{ patch_approval_db_home_result.db_homes[0] }}"
+
+- name: Fetch available patches from OCI
+  oracle.oci.oci_database_db_home_patch_facts:
+    db_home_id: "{{ patch_approval_db_home_id }}"
+    region: "{{ patch_approval_region }}"
+  register: patch_approval_patch_result
+
+- name: Find the requested patch in the current OCI response
+  ansible.builtin.set_fact:
+    patch_approval_patch_candidates: >-
+      {{
+        patch_approval_patch_result.db_home_patches | default([])
+        | selectattr('id', 'equalto', patch_approval_patch_id)
+        | list
+      }}
+
+- name: Require the requested patch version to match OCI
+  ansible.builtin.assert:
+    that:
+      - patch_approval_patch_candidates | length > 0
+      - >-
+        patch_approval_patch_candidates[0].version | default('') ==
+        patch_approval_patch_version
+    fail_msg: >-
+      Patch {{ patch_approval_patch_id }} version
+      {{ patch_approval_patch_version }} was not returned by OCI for
+      DB Home {{ patch_approval_db_home_id }}.
+
+- name: Set the verified patch details
+  ansible.builtin.set_fact:
+    patch_approval_patch_candidate: "{{ patch_approval_patch_candidates[0] }}"
 
 - name: Ensure approval directories exist
   ansible.builtin.file:

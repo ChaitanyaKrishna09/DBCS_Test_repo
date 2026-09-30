@@ -97,12 +97,12 @@
       </td>
     </tr>
     <tr>
-      <th>Discovery report</th>
-      <td>{{ patch_approval_record.discovery_report }}</td>
+      <th>Patch description</th>
+      <td>{{ patch_approval_record.patch_description | default('N/A') }}</td>
     </tr>
     <tr>
-      <th>Discovery timestamp</th>
-      <td>{{ patch_approval_record.discovery_timestamp }}</td>
+      <th>Patch source</th>
+      <td>{{ patch_approval_record.patch_source | default('N/A') }}</td>
     </tr>
     <tr>
       <th>Comments</th>

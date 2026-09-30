@@ -53,27 +53,25 @@ host before running the playbook.
 `patch_approval_main.yaml` records a DBA's patch decision and persists it
 as the authoritative input for later precheck and apply workflows. It:
 
-- validates the approval request against a `patch_discovery_main.yaml`
-  JSON report, so only discovered DB Homes and patch candidates can be
-  approved;
+- retrieves the requested DB Home and available patches from OCI using the
+  same facts as `fetch_db_patches.yaml`;
 - rejects an approval when the patch OCID, version, or DB Home is not
-  present in the discovery report;
+  present in the current OCI response;
 - automatically supersedes any previously active approval for the same
   DB Home before persisting a new one;
 - persists an immutable history record and a "latest" pointer file per
   DB Home; and
 - writes a human-readable HTML approval summary.
 
-The workflow does not call OCI and does not run precheck or apply
-actions; it only captures and persists the approval decision.
+The workflow performs read-only OCI validation and does not run precheck or
+apply actions; it only captures and persists the approval decision.
 
 Required runtime variables:
 
 - `db_home_id`: DB Home OCID being approved or rejected
 - `patch_id`: patch OCID being approved or rejected
 - `patch_version`: patch version being approved or rejected
-- `discovery_report`: path to a JSON report produced by
-  `patch_discovery_main.yaml`
+- `region` or `region1`: OCI region containing the DB Home
 - `approver`: identity of the DBA/change approver
 - `change_ticket`: change or request ticket reference
 
@@ -103,7 +101,7 @@ ansible-playbook patch_approval_main.yaml \
   -e db_home_id=<db_home_ocid> \
   -e patch_id=<patch_ocid> \
   -e patch_version=<patch_version> \
-  -e discovery_report=<path_to_discovery_json> \
+  -e region=<oci_region> \
   -e approver="<approver_name>" \
   -e change_ticket=<change_ticket> \
   -e decision=APPROVED

@@ -1,7 +1,10 @@
 ---
 - name: Capture and persist approved DBCS patch selection
-  hosts: DBCS
+  hosts: localhost
   gather_facts: false
+
+  collections:
+    - oracle.oci
 
   vars_files:
     - "config/{{ instance }}.yaml"
@@ -10,7 +13,7 @@
     patch_approval_db_home_id: "{{ db_home_id | default('') }}"
     patch_approval_patch_id: "{{ patch_id | default('') }}"
     patch_approval_patch_version: "{{ patch_version | default('') }}"
-    patch_approval_discovery_report: "{{ discovery_report | default('') }}"
+    patch_approval_region: "{{ region | default(region1 | default('')) }}"
     patch_approval_approver: "{{ approver | default('') }}"
     patch_approval_change_ticket: "{{ change_ticket | default('') }}"
     patch_approval_decision: "{{ decision | default('APPROVED') }}"
