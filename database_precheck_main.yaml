@@ -15,7 +15,6 @@
     target_region: "{{ region1 }}"
     target_patch_version: "23.26.3.0.0"
     target_patch_id: ""
-    precheck_report_file: "{{ playbook_dir }}/reports/db_precheck_{{ target_patch_version }}_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.html"
 
   tasks:
 
@@ -169,6 +168,16 @@
         path: "{{ playbook_dir }}/reports"
         state: directory
         mode: "0755"
+
+    - name: Capture one report timestamp
+      ansible.builtin.set_fact:
+        precheck_report_timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+
+    - name: Set report path from captured timestamp
+      ansible.builtin.set_fact:
+        precheck_report_file: >-
+          {{ playbook_dir }}/reports/db_precheck_{{ target_patch_version }}_{{
+          precheck_report_timestamp }}.html
 
     - name: Generate DB PRECHECK HTML report
       ansible.builtin.template:
