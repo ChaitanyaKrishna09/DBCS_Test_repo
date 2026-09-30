@@ -10,7 +10,7 @@
     target: "{{ group1 }}"
     target_region: "{{ region1 }}"
     target_patch_version: "23.26.3.0.0"
-    target_patch_id: "{{ patch1 }}" 
+    target_patch_id: "{{ patch1 }}"
     #"ocid1.dbpatch.oc1.iad.anuwcljrt5t4sqqad6m2ybdmvv5dbouxsngfnoh4kb3r2i6mgve5qfzjfdza"
 
   tasks:
@@ -30,7 +30,8 @@
     - name: Fetch patches applicable to DB Home
       oracle.oci.oci_database_db_home_patch_facts:
         db_home_id: "{{ item.db_homes[0].id }}"
-        region: "{{ hostvars[item.item].region | default(target_region) }}"
+        region: >-
+          {{ hostvars[item.item].region | default(target_region) }}
       loop: "{{ db_home_details.results }}"
       register: db_home_patch_details
       when:
@@ -91,33 +92,41 @@
         - item.databases | length > 0
         - target_patch is defined
         - target_patch | length > 0
-    
-    
+
+
     - name: Display precheck result
       ansible.builtin.debug:
         var: db_home_precheck_result
 
-    # - name: Fetch DB Home patch history
-    #   oracle.oci.oci_database_db_home_patch_history_entry_facts:
-    #     db_home_id: "{{ item.databases[0].db_home_id }}"
-    #     #db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
-    #     region: "{{ hostvars[item.item.item].region | default(target_region) }}"
-    #   loop: "{{ database_details.results }}"
-    #     #region: "us-ashburn-1"
-    #   register: db_home_patch_history
-    #   when:
-    #     - item.databases is defined
-    #     - item.databases | length > 0
-    
-    # - name: Find PRECHECK entries for target patch
-      # ansible.builtin.set_fact:
-        # precheck_entries: >-
-          # {{
-            # db_home_patch_history.db_home_patch_history_entries
-            # | selectattr('patch_id', 'equalto', target_patch_id)
-            # | selectattr('action', 'equalto', 'PRECHECK')
-            # | list
-          # }}
+    - name: Fetch DB Home patch history
+      oracle.oci.oci_database_db_home_patch_history_entry_facts:
+        db_home_id: "{{ item.databases[0].db_home_id }}"
+        region: "{{ hostvars[item.item.item].region | default(target_region) }}"
+      loop: "{{ database_details.results }}"
+      register: db_home_patch_history
+      when:
+        - item.databases is defined
+        - item.databases | length > 0
+
+    - name: Initialize matching PRECHECK entries
+      ansible.builtin.set_fact:
+        precheck_entries: []
+
+    - name: Collect PRECHECK entries for target patch
+      ansible.builtin.set_fact:
+        precheck_entries: >-
+          {{
+            precheck_entries
+            + (
+                item.db_home_patch_history_entries | default([])
+                | selectattr('patch_id', 'equalto', target_patch_id)
+                | selectattr('action', 'equalto', 'PRECHECK')
+                | list
+              )
+          }}
+      loop: "{{ db_home_patch_history.results | default([]) }}"
+      when:
+        - item.db_home_patch_history_entries is defined
 
     - name: Find latest PRECHECK result
       ansible.builtin.set_fact:
@@ -128,7 +137,7 @@
             | last
           }}
       when:
-        - precheck_entries | length > 0
+        - precheck_entries | default([]) | length > 0
 
     - name: Display latest PRECHECK result
       ansible.builtin.debug:
