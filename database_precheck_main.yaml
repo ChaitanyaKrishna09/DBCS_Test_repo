@@ -97,17 +97,17 @@
       ansible.builtin.debug:
         var: db_home_precheck_result
 
-    - name: Fetch DB Home patch history
-      oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "{{ item.databases[0].db_home_id }}"
-        #db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
-        region: "{{ hostvars[item.item.item].region | default(target_region) }}"
-      loop: "{{ database_details.results }}"
-        #region: "us-ashburn-1"
-      register: db_home_patch_history
-      when:
-        - item.databases is defined
-        - item.databases | length > 0
+    # - name: Fetch DB Home patch history
+    #   oracle.oci.oci_database_db_home_patch_history_entry_facts:
+    #     db_home_id: "{{ item.databases[0].db_home_id }}"
+    #     #db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
+    #     region: "{{ hostvars[item.item.item].region | default(target_region) }}"
+    #   loop: "{{ database_details.results }}"
+    #     #region: "us-ashburn-1"
+    #   register: db_home_patch_history
+    #   when:
+    #     - item.databases is defined
+    #     - item.databases | length > 0
     
     - name: Find PRECHECK entries for target patch
       ansible.builtin.set_fact:
