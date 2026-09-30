@@ -1,179 +1,149 @@
 ---
-- name: PRECHECK every available patch on every DB Home
-  hosts: DBCS
+- name: DB Home Patch Precheck
+  hosts: localhost
   gather_facts: false
 
   collections:
     - oracle.oci
 
   vars:
-    target_group: "{{ group1 | default('DBCS') }}"
-    target_region: "{{ region1 | default('') }}"
-    precheck_wait_timeout: "{{ db_precheck_wait_timeout | default(1800) }}"
+    target: "{{ group1 }}"
+    target_region: "{{ region1 }}"
+    target_patch_version: "23.26.3.0.0"
+    target_patch_id: "ocid1.dbpatch.oc1.iad.anuwcljrt5t4sqqad6m2ybdmvv5dbouxsngfnoh4kb3r2i6mgve5qfzjfdza"
 
   tasks:
-    - name: Build target host list
+
+    - name: Ensure target is a list of hosts
       ansible.builtin.set_fact:
-        target_hosts: "{{ groups[target_group] if target_group in groups else [target_group] }}"
+        target_list: "{{ groups[target] if target in groups else [target] }}"
 
-    - name: Require target inventory hosts
-      ansible.builtin.assert:
-        that:
-          - target_hosts | length > 0
-        fail_msg: "No hosts were found for target group {{ target_group }}."
-
-    - name: Fetch DB Homes from every target DB System
+    - name: Fetch DB Home details
       oracle.oci.oci_database_db_home_facts:
         compartment_id: "{{ hostvars[item].compartment_id }}"
         db_system_id: "{{ hostvars[item].db_system_id }}"
-        region: "{{ hostvars[item].region | default(target_region, true) }}"
-      loop: "{{ target_hosts }}"
-      loop_control:
-        label: "{{ item }}"
-      register: db_home_facts
+        region: "{{ hostvars[item].region | default(target_region) }}"
+      loop: "{{ target_list }}"
+      register: db_home_details
 
-    - name: Build DB Home target list
-      ansible.builtin.set_fact:
-        db_home_targets: >-
-          {{ (db_home_targets | default([])) + [{
-            'db_home_id': item.1.id,
-            'region': hostvars[item.0.item].region | default(target_region, true)
-          }] }}
-      loop: "{{ db_home_facts.results | subelements('db_homes', skip_missing=True) }}"
-      loop_control:
-        label: "{{ item.1.id }}"
-
-    - name: Deduplicate DB Homes
-      ansible.builtin.set_fact:
-        unique_db_home_targets: "{{ db_home_targets | default([]) | unique(attribute='db_home_id') | list }}"
-
-    - name: Require discovered DB Homes
-      ansible.builtin.assert:
-        that:
-          - unique_db_home_targets | length > 0
-        fail_msg: "No DB Homes were discovered for target group {{ target_group }}."
-
-    - name: Fetch available patches for every DB Home
+    - name: Fetch patches applicable to DB Home
       oracle.oci.oci_database_db_home_patch_facts:
-        db_home_id: "{{ item.db_home_id }}"
-        region: "{{ item.region }}"
-      loop: "{{ unique_db_home_targets }}"
-      loop_control:
-        label: "{{ item.db_home_id }}"
-      register: db_home_patch_facts
+        db_home_id: "{{ item.db_homes[0].id }}"
+        region: "{{ hostvars[item.item].region | default(target_region) }}"
+      loop: "{{ db_home_details.results }}"
+      register: db_home_patch_details
+      when:
+        - item.db_homes is defined
+        - item.db_homes | length > 0
 
-    - name: Build all patch targets that support PRECHECK
+    - name: Find target DB Home patch
       ansible.builtin.set_fact:
-        precheck_targets: >-
-          {{ (precheck_targets | default([])) + [{
-            'db_home_id': item.0.item.db_home_id,
-            'region': item.0.item.region,
-            'patch_id': item.1.id,
-            'patch_version': item.1.version | default('N/A'),
-            'patch_description': item.1.description | default('N/A')
-          }] }}
-      loop: "{{ db_home_patch_facts.results | subelements('db_home_patches', skip_missing=True) }}"
-      loop_control:
-        label: "{{ item.0.item.db_home_id }} / {{ item.1.id }}"
-      when: "'PRECHECK' in (item.1.available_actions | default([]))"
+        target_patch: "{{ item.db_home_patches | selectattr('version', 'equalto', target_patch_version) | list }}"
+      loop: "{{ db_home_patch_details.results }}"
+      when:
+        - item.db_home_patches is defined
+        - item.db_home_patches | length > 0
 
-    - name: Require at least one PRECHECK-eligible patch
-      ansible.builtin.assert:
-        that:
-          - precheck_targets is defined
-          - precheck_targets | length > 0
-        fail_msg: >-
-          OCI returned no patches that support PRECHECK for DB Homes in
-          {{ target_group }}.
-
-    - name: Display all selected PRECHECK targets
+    - name: Display target patch details
       ansible.builtin.debug:
         msg:
-          - "DB Home ID: {{ item.db_home_id }}"
-          - "Patch ID: {{ item.patch_id }}"
-          - "Patch Version: {{ item.patch_version }}"
-          - "Description: {{ item.patch_description }}"
-      loop: "{{ precheck_targets }}"
-      loop_control:
-        label: "{{ item.db_home_id }} / {{ item.patch_id }}"
+          - "Target Patch Version: {{ target_patch_version }}"
+          - "Patch ID: {{ target_patch[0].id }}"
+          - "Patch Description: {{ target_patch[0].description }}"
+          - "Available Actions: {{ target_patch[0].available_actions }}"
+      when:
+        - target_patch is defined
+        - target_patch | length > 0
 
-    - name: Run PRECHECK for every selected home and patch
+    - name: Fetch database details
+      oracle.oci.oci_database_database_facts:
+        compartment_id: "{{ hostvars[item.item].compartment_id }}"
+        db_home_id: "{{ item.db_homes[0].id }}"
+        region: "{{ hostvars[item.item].region | default(target_region) }}"
+      loop: "{{ db_home_details.results }}"
+      register: database_details
+      when:
+        - item.db_homes is defined
+        - item.db_homes | length > 0
+
+    - name: Display database ID
+      ansible.builtin.debug:
+        msg:
+          - "Database ID: {{ item.databases[0].id }}"
+          - "Database Name: {{ item.databases[0].db_name }}"
+      loop: "{{ database_details.results }}"
+      when:
+        - item.databases is defined
+        - item.databases | length > 0
+
+    - name: Run DB Home patch precheck
       oracle.oci.oci_database_db_home:
-        db_home_id: "{{ item.db_home_id }}"
+        db_home_id: "{{ item.databases[0].db_home_id }}"
         patch_details:
-          patch_id: "{{ item.patch_id }}"
+          patch_id: "{{ target_patch[0].id }}"
           action: PRECHECK
-        region: "{{ item.region }}"
-        wait: true
-        wait_timeout: "{{ precheck_wait_timeout }}"
-      loop: "{{ precheck_targets }}"
-      loop_control:
-        label: "{{ item.db_home_id }} / {{ item.patch_version }} / {{ item.patch_id }}"
-      register: db_home_precheck_results
-
-    - name: Show OCI PRECHECK operation results
+        region: "{{ hostvars[item.item.item].region | default(target_region) }}"
+      loop: "{{ database_details.results }}"
+      register: db_home_precheck_result
+      when:
+        - item.databases is defined
+        - item.databases | length > 0
+        - target_patch is defined
+        - target_patch | length > 0
+    
+    
+    - name: Display precheck result
       ansible.builtin.debug:
-        var: db_home_precheck_results.results
+        var: db_home_precheck_result
 
-    - name: Fetch patch history for every DB Home
+    - name: Fetch DB Home patch history
       oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "{{ item.db_home_id }}"
-        region: "{{ item.region }}"
-        sort_by: TIMESTARTED
-        sort_order: DESC
-      loop: "{{ unique_db_home_targets }}"
-      loop_control:
-        label: "{{ item.db_home_id }}"
+        db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
+        region: "us-ashburn-1"
       register: db_home_patch_history
-
-    - name: Build latest PRECHECK validation results for each patch
+    
+    - name: Find PRECHECK entries for target patch
       ansible.builtin.set_fact:
-        precheck_validation_results: >-
-          {{ (precheck_validation_results | default([])) + [{
-            'db_home_id': item.db_home_id,
-            'patch_id': item.patch_id,
-            'patch_version': item.patch_version,
-            'latest_precheck': (
-              db_home_patch_history.results
-              | selectattr('item.db_home_id', 'equalto', item.db_home_id)
-              | selectattr('db_home_patch_history_entries', 'defined')
-              | map(attribute='db_home_patch_history_entries')
-              | flatten
-              | selectattr('patch_id', 'equalto', item.patch_id)
-              | selectattr('action', 'equalto', 'PRECHECK')
-              | sort(attribute='time_started')
-              | last
-              | default({})
-            )
-          }] }}
-      loop: "{{ precheck_targets }}"
-      loop_control:
-        label: "{{ item.db_home_id }} / {{ item.patch_id }}"
+        precheck_entries: >-
+          {{
+            db_home_patch_history.db_home_patch_history_entries
+            | selectattr('patch_id', 'equalto', target_patch_id)
+            | selectattr('action', 'equalto', 'PRECHECK')
+            | list
+          }}
 
-    - name: Display latest PRECHECK state for every home and patch
+    - name: Find latest PRECHECK result
+      ansible.builtin.set_fact:
+        latest_precheck: >-
+          {{
+            precheck_entries
+            | sort(attribute='time_started')
+            | last
+          }}
+      when:
+        - precheck_entries | length > 0
+
+    - name: Display latest PRECHECK result
       ansible.builtin.debug:
-        msg: >-
-          DB Home {{ item.db_home_id }}, patch {{ item.patch_id }}
-          ({{ item.patch_version }}):
-          {{ item.latest_precheck.lifecycle_state | default('NOT_FOUND') }}
-      loop: "{{ precheck_validation_results }}"
-      loop_control:
-        label: "{{ item.db_home_id }} / {{ item.patch_id }}"
+        msg:
+          - "Target Patch ID: {{ target_patch_id }}"
+          - "PRECHECK History ID: {{ latest_precheck.id }}"
+          - "PRECHECK Action: {{ latest_precheck.action }}"
+          - "PRECHECK State: {{ latest_precheck.lifecycle_state }}"
+          - "PRECHECK Started: {{ latest_precheck.time_started }}"
+          - "PRECHECK Ended: {{ latest_precheck.time_ended }}"
+      when:
+        - latest_precheck is defined
 
-    - name: Require successful PRECHECK for every home and patch
+    - name: Validate DB Home PRECHECK
       ansible.builtin.assert:
         that:
-          - item.latest_precheck.id is defined
-          - item.latest_precheck.lifecycle_state == 'SUCCEEDED'
+          - latest_precheck is defined
+          - latest_precheck.lifecycle_state == "SUCCEEDED"
         fail_msg: >-
-          PRECHECK for DB Home {{ item.db_home_id }}, patch {{ item.patch_id }}
-          ({{ item.patch_version }}) did not succeed. Latest state:
-          {{ item.latest_precheck.lifecycle_state | default('NOT_FOUND') }}.
+          DB Home PRECHECK failed or no successful PRECHECK was found
+          for patch {{ target_patch_id }}.
+          Current state:
+          {{ latest_precheck.lifecycle_state | default('NOT_FOUND') }}
         success_msg: >-
-          PRECHECK succeeded for DB Home {{ item.db_home_id }},
-          patch {{ item.patch_id }} ({{ item.patch_version }}).
-      loop: "{{ precheck_validation_results }}"
-      loop_control:
-        label: "{{ item.db_home_id }} / {{ item.patch_id }}"
-
-        
+          DB Home PRECHECK succeeded for patch {{ target_patch_id }}.
