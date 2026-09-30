@@ -10,8 +10,7 @@
     target: "{{ group1 }}"
     target_region: "{{ region1 }}"
     target_patch_version: "23.26.3.0.0"
-    target_patch_id: "{{ patch1 }}"
-    #"ocid1.dbpatch.oc1.iad.anuwcljrt5t4sqqad6m2ybdmvv5dbouxsngfnoh4kb3r2i6mgve5qfzjfdza"
+    target_patch_id: ""
 
   tasks:
 
@@ -45,6 +44,13 @@
       when:
         - item.db_home_patches is defined
         - item.db_home_patches | length > 0
+
+    - name: Set target patch ID from the selected OCI patch
+      ansible.builtin.set_fact:
+        target_patch_id: "{{ target_patch[0].id }}"
+      when:
+        - target_patch is defined
+        - target_patch | length > 0
 
     - name: Display target patch details
       ansible.builtin.debug:
