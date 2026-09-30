@@ -98,7 +98,7 @@
 
     - name: Fetch DB Home patch history
       oracle.oci.oci_database_db_home_patch_history_entry_facts:
-        db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
+        #db_home_id: "ocid1.dbhome.oc1.iad.anuwcljrhziiliyawq3yhm4g7dipruddirkhlnvcigsc7hefphkzsouhssgq"
         region: "us-ashburn-1"
       register: db_home_patch_history
     
