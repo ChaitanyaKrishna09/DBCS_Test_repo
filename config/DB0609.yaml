@@ -6,13 +6,13 @@ date_compact: "{{ '%Y%m%d' | strftime }}"
 
 db_name: DB0609
 ENV_HOME: "/home/oracle"
-ENV_FILE: "DB.env"
-log_dir: "/tmp/dbcs_logs"
-tmp_sql_dir: "/tmp"
+ENV_FILE: "db.env"
+log_dir: "/u01/app/oracle/backups"
+tmp_sql_dir: "/u01/app/oracle/backups"
+spool_log: "/u01/app/oracle/backups"
 
-backup_threshold_hours: 24
+backup_threshold_hours: 96
 
-# Local (AWX) log/report location - aligned with DB0609.yaml
 localhost_log_path: "/var/lib/awx/projects/DBCS"
 short_hostname: "{{ inventory_hostname.split('.')[0] }}"
 local_log_file_path: "{{ localhost_log_path }}/{{ short_hostname }}"
@@ -20,53 +20,27 @@ local_log_file_path: "{{ localhost_log_path }}/{{ short_hostname }}"
 GRID_ENV_HOME: "/home/grid"
 GRID_ENV_FILE: "GRID.env"
 
-backup_dir: "/u01/backups"  #Homes backup dir
+backup_dir: "/u01/app/oracle/backups"  #Homes backup dir
 
 oracle_home: "/u01/app/oracle/product/23.0.0.0/dbhome_1"
 grid_home: "/u01/app/23.0.0.0/grid"
 
 backup_homes:
   - oracle_home
+  - grid_home
 
-Compile invalid database objects:
-  - oracle_home
+grid_patch_version: "23.26.3.0.0"
+db_patch_version: "23.26.3.0.0"
 
-# Patch workflow inputs. Replace required placeholder values before running.
-db_user: "oracle"
-
-group1: "DBCS"
-region1: ""
-# Reports are written where the email task looks for them
-patch_discovery_report_dir: "{{ playbook_dir }}"
-
-db_home_id: "REPLACE_WITH_DB_HOME_OCID"
-patch_id: "REPLACE_WITH_PATCH_OCID"
-patch_version: "REPLACE_WITH_PATCH_VERSION"
-discovery_report: "REPLACE_WITH_DISCOVERY_JSON_PATH"
-
-# Versions referenced by fetch_db_patches.yaml
-grid_patch_version: "REPLACE_WITH_GRID_PATCH_VERSION"
-db_patch_version: "REPLACE_WITH_DB_PATCH_VERSION"
-
-approver: "REPLACE_WITH_APPROVER"
-change_ticket: "REPLACE_WITH_CHANGE_TICKET"
-decision: "APPROVED"
-environment: "REPLACE_WITH_ENVIRONMENT"
-maintenance_window_start: ""
-maintenance_window_end: ""
-comments: ""
-expiry_hours: 72
-
-patch_apply_target_group: "all"
-
-# Email settings (same keys as DB0609.yaml / fetch_db_patches.yaml)
 smtp_server: "centroid-com.mail.protection.outlook.com"
 smtp_port: "25"
-email_sender: "oracle@cenoiadolam01.ad.centroid.com"
 email_recipients:
-  - "pavan.maccha@centroid.com"
-  - "naidu.chaitanya@centroid.com"
-  - "madhuravani.peddi@centroid.com"
+  - madhuravani.peddi@centroid.com
+  # - Lakshmi.Sunanda@centroid.com
+  # - vamshi.thandu@centroid.com
+  # - pavan.maccha@centroid.com
+  # - naidu.chaitanya@centroid.com
+email_sender: "oracle@cenoiadolam01.ad.centroid.com"
 
 sendmail_path: "/usr/sbin/sendmail"
 notification:
@@ -75,5 +49,6 @@ notification:
   smtp_username: ""
   smtp_password: ""
   smtp_secure: ""
-  from_email: "{{ email_sender }}"
-  to_emails: "{{ email_recipients }}"
+  from_email: ""
+  to_emails:
+    - "madhuravani.peddi@centroid.com"
