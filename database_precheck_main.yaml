@@ -1,6 +1,6 @@
 ---
 - name: PRECHECK every available patch on every DB Home
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
 
   collections:
@@ -127,8 +127,8 @@
         region: "{{ item.region }}"
         sort_by: TIMESTARTED
         sort_order: DESC
-        config_file_location: "{{ oci_config_file_path }}"
-        config_profile_name: "{{ oci_config_profile_name }}"
+        config_file_location: "{{ oci_config_file | default(omit) }}"
+        config_profile_name: "{{ oci_config_profile | default(omit) }}"
       loop: "{{ unique_db_home_targets }}"
       loop_control:
         label: "{{ item.db_home_id }}"
