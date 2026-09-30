@@ -1,6 +1,6 @@
 ---
 - name: PRECHECK every available patch on every DB Home
-  hosts: localhost
+  hosts: DBCS
   gather_facts: false
 
   collections:
