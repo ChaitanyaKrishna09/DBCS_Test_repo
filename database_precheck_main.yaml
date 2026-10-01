@@ -180,10 +180,10 @@
         precheck_run_valid: >-
           {{
             db_home_precheck_result is defined
-            and not (db_home_precheck_result.skipped | default(false) | bool)
-            and not (db_home_precheck_result.failed | default(false) | bool)
-            and (db_home_precheck_result.results | default([]) | selectattr('failed') | list | length == 0)
-            and (db_home_precheck_result.results | default([]) | selectattr('skipped') | list | length == 0)
+            and not (db_home_precheck_result.get('skipped', false) | bool)
+            and not (db_home_precheck_result.get('failed', false) | bool)
+            and (db_home_precheck_result.get('results', []) | selectattr('failed', 'defined') | selectattr('failed') | list | length == 0)
+            and (db_home_precheck_result.get('results', []) | selectattr('skipped', 'defined') | selectattr('skipped') | list | length == 0)
             and (precheck_entries | length > 0)
             and (precheck_entries | rejectattr('lifecycle_state', 'equalto', 'SUCCEEDED') | list | length == 0)
           }}
