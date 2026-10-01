@@ -89,6 +89,28 @@
         - item.databases is defined
         - item.databases | length > 0
 
+    - name: Capture DB Home patch history before PRECHECK
+      oracle.oci.oci_database_db_home_patch_history_entry_facts:
+        db_home_id: "{{ item.databases[0].db_home_id }}"
+        region: "{{ hostvars[item.item.item].region | default(target_region) }}"
+      loop: "{{ database_details.results }}"
+      register: db_home_patch_history_before
+      when:
+        - item.databases is defined
+        - item.databases | length > 0
+
+    - name: Record existing patch history IDs
+      ansible.builtin.set_fact:
+        precheck_history_before_ids: >-
+          {{
+            db_home_patch_history_before.results | default([])
+            | selectattr('db_home_patch_history_entries', 'defined')
+            | map(attribute='db_home_patch_history_entries')
+            | flatten
+            | map(attribute='id')
+            | list
+          }}
+
     - name: Run DB Home patch precheck
       oracle.oci.oci_database_db_home:
         db_home_id: "{{ item.databases[0].db_home_id }}"
@@ -123,8 +145,9 @@
     - name: Initialize matching PRECHECK entries
       ansible.builtin.set_fact:
         precheck_entries: []
+        latest_precheck: {}
 
-    - name: Collect PRECHECK entries for target patch
+    - name: Collect new PRECHECK entries for target patch
       ansible.builtin.set_fact:
         precheck_entries: >-
           {{
@@ -133,6 +156,7 @@
                 item.db_home_patch_history_entries | default([])
                 | selectattr('patch_id', 'equalto', target_patch_id)
                 | selectattr('action', 'equalto', 'PRECHECK')
+                | rejectattr('id', 'in', precheck_history_before_ids | default([]))
                 | list
               )
           }}
@@ -150,6 +174,19 @@
           }}
       when:
         - precheck_entries | default([]) | length > 0
+
+    - name: Determine whether the current PRECHECK run succeeded
+      ansible.builtin.set_fact:
+        precheck_run_valid: >-
+          {{
+            db_home_precheck_result is defined
+            and not (db_home_precheck_result.skipped | default(false) | bool)
+            and not (db_home_precheck_result.failed | default(false) | bool)
+            and (db_home_precheck_result.results | default([]) | selectattr('failed') | list | length == 0)
+            and (db_home_precheck_result.results | default([]) | selectattr('skipped') | list | length == 0)
+            and (precheck_entries | length > 0)
+            and (precheck_entries | rejectattr('lifecycle_state', 'equalto', 'SUCCEEDED') | list | length == 0)
+          }}
 
     - name: Display latest PRECHECK result
       ansible.builtin.debug:
@@ -199,12 +236,13 @@
     - name: Validate DB Home PRECHECK
       ansible.builtin.assert:
         that:
-          - latest_precheck is defined
-          - latest_precheck.lifecycle_state == "SUCCEEDED"
+          - precheck_run_valid | bool
         fail_msg: >-
-          DB Home PRECHECK failed or no successful PRECHECK was found
-          for patch {{ target_patch_id }}.
-          Current state:
-          {{ latest_precheck.lifecycle_state | default('NOT_FOUND') }}
+          Current-run DB Home PRECHECK failed, was skipped, or produced no new
+          successful history entry for patch {{ target_patch_id }}.
+          Current-run history state:
+          {{ latest_precheck.lifecycle_state | default('NOT_FOUND') }}.
+          Task result:
+          {{ db_home_precheck_result.msg | default('No PRECHECK task result was recorded.') }}
         success_msg: >-
-          DB Home PRECHECK succeeded for patch {{ target_patch_id }}.
+          Current-run DB Home PRECHECK succeeded for patch {{ target_patch_id }}.

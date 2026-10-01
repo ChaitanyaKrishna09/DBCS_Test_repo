@@ -29,18 +29,18 @@
     <div><strong>Patch version:</strong> {{ target_patch_version | default('N/A') | e }}</div>
     <div><strong>Patch ID:</strong> {{ target_patch_id | default('N/A', true) | e }}</div>
     <div>
-      <strong>Latest history state:</strong>
-      {% if history_state == 'SUCCEEDED' %}
+      <strong>Current-run history state:</strong>
+      {% if precheck_run_valid | default(false) | bool %}
         <span class="success">{{ history_state | e }}</span>
       {% else %}
         <span class="failure">{{ history_state | e }}</span>
       {% endif %}
     </div>
     <div><strong>Validation:</strong>
-      {% if history_state == 'SUCCEEDED' %}
+      {% if precheck_run_valid | default(false) | bool %}
         <span class="success">PRECHECK succeeded</span>
       {% else %}
-        <span class="failure">PRECHECK failed or no matching history was found</span>
+        <span class="failure">Current-run PRECHECK failed, was skipped, or produced no new successful history</span>
       {% endif %}
     </div>
   </div>
@@ -61,33 +61,7 @@
     </tbody>
   </table>
 
-  <h2>PRECHECK Operation Responses</h2>
-  <table>
-    <thead><tr><th>DB Home ID</th><th>Database</th><th>Inventory host</th><th>Task result</th><th>Message</th></tr></thead>
-    <tbody>
-      {% for operation in (db_home_precheck_result.results | default([])) %}
-        {% set operation_item = operation.item | default({}) %}
-        {% set databases = operation_item.databases | default([]) %}
-        {% set database = (databases | first) | default({}) %}
-        {% set home_result = operation_item.item | default({}) %}
-        <tr>
-          <td>{{ database.db_home_id | default('N/A') | e }}</td>
-          <td>{{ database.db_name | default('N/A') | e }}</td>
-          <td>{{ home_result.item | default('N/A') | e }}</td>
-          <td>
-            {% if operation.skipped | default(false) %}SKIPPED
-            {% elif operation.failed | default(false) %}FAILED
-            {% else %}SUBMITTED{% endif %}
-          </td>
-          <td>{{ operation.msg | default('See OCI patch history for the final lifecycle state.') | e }}</td>
-        </tr>
-      {% else %}
-      <tr><td colspan="5">No PRECHECK operation response was recorded.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <h2>Matching PRECHECK History</h2>
+  <h2>Current-Run PRECHECK History</h2>
   <table>
     <thead><tr><th>History ID</th><th>Patch ID</th><th>Action</th><th>State</th><th>Started</th><th>Ended</th></tr></thead>
     <tbody>
